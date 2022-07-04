@@ -36,7 +36,7 @@ class Bruteforce_extractor():
         self.candidates = candidates 
         self.shapelets = shapelets
     
-    def extract_candidates(self, L_star=0.3, distance=euclidean_distance):
+    def extract_candidates(self, L_star=0.3):
         '''
         From train_data of shape (N, Q) extract all the candidates of length L_star * Q
         distance: distance measure for subsequnces of same length
@@ -56,7 +56,7 @@ class Bruteforce_extractor():
                 sum = 0
                 for index in range(N):
                     # sum all the sdists from every time series
-                    sum += util.sdist(S, X[index,:], distance)
+                    sum += util.sdist(S, X[index,:])
                 # append also the index of the position of the shapelet
                 sequences.append(S)
                 positions = np.append(positions, j)
@@ -66,7 +66,7 @@ class Bruteforce_extractor():
         self.candidates = candidates
         return candidates
 
-    def get_top_candidates(self, K, pos_boundary, reverse=False, distance=euclidean_distance):
+    def get_top_candidates(self, K, pos_boundary, reverse=False):
         '''
         Extract best K shapelets from self.candidates according to score in normal or reverse order
         with constraint distance(S_i, S-j) < threshold and |pos_i - pos_j| < pos_boundary
@@ -100,7 +100,7 @@ class Bruteforce_extractor():
             # iterate over all the candidates:
             for p in range(len(sequences)):
                 S2 = sequences[p]
-                d = distance(S1,S2)
+                d = euclidean_distance(S1,S2)
                 # p is the index of the subsequence and d its distance to the last discovered shapelet
                 similarity_distances.append(d)
             similarity_distances = np.array(similarity_distances)
@@ -120,7 +120,7 @@ class Bruteforce_extractor():
         self.shapelets = shapelets
         return shapelets
 
-    def extract_shapelets(self, K_star=0.1, L_star=0.3, pos_boundary=0, distance=euclidean_distance , reverse=False):
+    def extract_shapelets(self, K_star=0.1, L_star=0.3, pos_boundary=0, reverse=False):
         '''
         Extract best shapelets from train_data
         :param X: ndarray of shape (N, Q, 1) with N time series all of the same length Q (can be modified for different lenghts)
@@ -138,13 +138,11 @@ class Bruteforce_extractor():
         K = round(K_star * Q)
         print(f'Are going to be extracted {K:.3f} shapelets of length {L:.4f}')
 
-        if distance==dtw:
-            print('using dtw')
         if reverse == True :
             print('Shapelets are going to be extracted in reverse order!')
 
-        self.extract_candidates(L_star, distance)
-        shapelets = self.get_top_candidates(K, pos_boundary, reverse, distance)
+        self.extract_candidates(L_star)
+        shapelets = self.get_top_candidates(K, pos_boundary, reverse)
         print('Time for shapelets extraction:')
         print("--- %s seconds ---" % (time.time() - start_time))
         return shapelets

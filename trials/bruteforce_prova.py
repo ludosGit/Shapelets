@@ -12,7 +12,6 @@ from tslearn.preprocessing import TimeSeriesScalerMinMax
 from trials.bruteforce import Bruteforce_extractor
 from trials.preprocessing_anomaly import preprocessing_anomaly
 from trials.util import euclidean_distance
-from tslearn.metrics import dtw
 
 ####################### UNIVARIATE BRUTEFORCE ALGORITHM TRIAL ON UCR DATASETS#################
 
@@ -84,16 +83,16 @@ ocsvm.fit(X_train_transform)
 ### EVALUATE the prediction:
 
 y_train_predict = ocsvm.predict(X_train_transform)
-# y_train_predict_prob = ocsvm.score_samples(X_train_transform)
+y_train_score = ocsvm.score_samples(X_train_transform)
 train_ba = balanced_accuracy_score(y_train_anomaly, y_train_predict)
-auc_train = roc_auc_score(y_train_anomaly, y_train_predict)
+auc_train = roc_auc_score(y_train_anomaly, y_train_score)
 print("OCSVM train accuracy:", train_ba)
 print("OCSVM train AUC:", auc_train)
 
 y_test_predict = ocsvm.predict(X_test_transform)
-# y_test_predict_prob = ocsvm.score_samples(X_test_transform)
+y_test_score = ocsvm.score_samples(X_test_transform)
 test_ba = balanced_accuracy_score(y_test_anomaly, y_test_predict)
-auc_test = roc_auc_score(y_test_anomaly, y_test_predict)
+auc_test = roc_auc_score(y_test_anomaly, y_test_score)
 print("OCSVM test accuracy:", test_ba)
 print("OCSVM test AUC:", auc_test)
 
