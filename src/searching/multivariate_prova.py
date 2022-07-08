@@ -2,21 +2,21 @@ import numpy as np
 import sys
 sys.path.append("/Documents/Shapelets_first_experiments")
 from sklearn.svm import OneClassSVM
-from SVDD import SVDD
+from src.SVDD.SVDD import SVDD
 from sklearn.metrics import balanced_accuracy_score
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.metrics import roc_curve, auc
-from sklearn.preprocessing import LabelBinarizer, LabelEncoder
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 import matplotlib.pyplot as plt
 plt.rcParams["font.weight"] = "bold"
 plt.rcParams["axes.labelweight"] = "bold"
 from tslearn.datasets import CachedDatasets, UCR_UEA_datasets
 from tslearn.preprocessing import TimeSeriesScalerMinMax, TimeSeriesScalerMeanVariance
-from trials.bruteforce_multivariate import Bruteforce_extractor_mv
-from trials.preprocessing_anomaly import preprocessing_anomaly
-from trials.util import euclidean_distance
+from src.searching.bruteforce_multivariate import Bruteforce_extractor_mv, Candidateset
+from src.preprocessing_anomaly import preprocessing_anomaly
+from src.util import Normalizer
 
 ####################### MULTIVARIATE BRUTEFORCE ALGORITHM TRIAL ON UCR DATASETS#################
 
@@ -29,11 +29,16 @@ np.random.seed(0)
 
 # Download data
 data_name = "BasicMotions"
-data_loader = UCR_UEA_datasets()
-data_loader.list_multivariate_datasets()
+# X_train, y_train, X_test, y_test = UCR_UEA_datasets().load_dataset(data_name)
+# np.save(f'demo/data/{data_name}_train', X_train)
+# np.save(f'demo/data/{data_name}_train_labels', y_train)
+# np.save(f'demo/data/{data_name}_test', X_test)
+# np.save(f'demo/data/{data_name}_test_labeles', y_test)
 
-
-X_train, y_train, X_test, y_test = data_loader.load_dataset(data_name)
+X_train = np.load(f'demo/data/{data_name}_train.npy')
+y_train = np.load(f'demo/data/{data_name}_train_labels.npy')
+X_test = np.load(f'demo/data/{data_name}_test.npy')
+y_test = np.load(f'demo/data/{data_name}_test_labeles.npy')
 
 ######################### PREPROCESSING #########################
 
@@ -85,9 +90,12 @@ print('number positive test', len(y_test_anomaly[y_test_anomaly==1]))
 # X_train_anomaly = TimeSeriesScalerMeanVariance().fit_transform(X_train_anomaly)
 # X_test_anomaly = TimeSeriesScalerMeanVariance().fit_transform(X_test_anomaly)
 
+# X_train_anomaly = TimeSeriesScalerMinMax().fit_transform(X_train_anomaly)
+# X_test_anomaly = TimeSeriesScalerMinMax().fit_transform(X_test_anomaly)
 
-X_train_anomaly = TimeSeriesScalerMinMax().fit_transform(X_train_anomaly)
-X_test_anomaly = TimeSeriesScalerMinMax().fit_transform(X_test_anomaly)
+normalizer = Normalizer(scaler=MinMaxScaler())
+X_train_anomaly = normalizer.fit_normalize(X_train_anomaly)
+X_test_anomaly = normalizer.normalize(X_test_anomaly)
 
 X_train_anomaly.shape
 extractor = Bruteforce_extractor_mv(train_data=X_train_anomaly, test_data=X_test_anomaly)
@@ -96,13 +104,19 @@ L_star = 0.2
 
 # REVERSE indicates wheter the extracted shapelets are the furthest (True) or the nearest (False) to the majority of the time series
 reverse = False
-shapelets = extractor.extract_shapelets(K_star, L_star, pos_boundary=5, reverse=reverse)
+pos_boundary=5
+shapelets = extractor.extract_shapelets(K_star, L_star, pos_boundary=pos_boundary, reverse=reverse)
 S = shapelets.sequences
+np.save(f'results/{data_name}/s_reverse={reverse}_pos={pos_boundary}.npy', S)
 shapelets.positions
 shapelets.scores
 
 ############# ANOMALY DETECTION USING SVDD ##############
 
+# S = np.load(f'results/{data_name}/s_reverse={reverse}_pos={pos_boundary}.npy')
+# # set manually the shapelets in extractor
+# extractor.shapelets = Candidateset()
+# extractor.shapelets.sequences = S
 # transform both train and test 
 X_train_transform, X_test_transform = extractor.transform()
 X_train_transform.shape
@@ -123,7 +137,7 @@ C = 1 / (N * alpha)
 
 
 
-svdd = SVDD.SVDD(C=C, zero_center=True)
+svdd = SVDD(C=C, zero_center=True)
 
 # Choose how many extracted shapelets to take from 1 to max_n_shap
 max_n_shap = round(K_star * Q)
@@ -228,7 +242,7 @@ plt.ylim((-0.01, y_max + 0.1))
 plt.ylabel("shapelet 2")
 plt.xlabel("shapelet 1")
 plt.show()
-plt.savefig(f'Train_boundary_svdd_ba={train_ba}.png')
+# plt.savefig(f'Train_boundary_svdd_ba={train_ba}.png')
 
 ############## TEST DATA
 

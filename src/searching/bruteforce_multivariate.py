@@ -17,7 +17,7 @@ class Candidateset():
     '''
     Class for storing a set of candidate subsequences together with position and score
     '''
-    def __init__(self, sequences=None, positions=None, scores=None):
+    def __init__(self, sequences=[], positions=[], scores=[]):
         self.sequences = np.array(sequences)
         self.positions = np.array(positions, dtype='int')
         self.scores = np.array(scores)
@@ -55,12 +55,14 @@ class Bruteforce_extractor_mv():
                 S = X[i, j:j+L,:]
                 sum = 0
                 for index in range(N):
-                    # sum all the sdists from every time series
-                    sum += util.sdist_mv(S, X[index,:,:])
+                    # sum all the SQUARED sdists from every time series
+                    sum += util.sdist_mv(S, X[index,:,:])**2
                 # append also the index of the position of the shapelet
                 # don't use append numpy
                 sequences.append(S)
                 positions.append(j)
+                # take the mean
+                sum = sum/N
                 scores.append(sum)
         sequences = np.array(sequences)
         positions = np.array(positions, dtype='int')

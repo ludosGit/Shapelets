@@ -20,9 +20,9 @@ def preprocessing_anomaly(X_train, y_train, X_test, y_test, alpha, normal_class,
     random_indices = np.random.choice(N_positive_total, size=size_positive, replace=False)
 
     X_train_positive = X_total[y_total == normal_class][random_indices]
-    y_train_positive = y_total[y_total == normal_class][random_indices]
+    y_train_positive = np.ones(len(X_train_positive), dtype='int')
     X_test_positive = np.delete(X_total[y_total == normal_class], random_indices, axis=0)
-    y_test_positive = np.array([1] * len(X_test_positive))
+    y_test_positive = np.ones(len(X_test_positive), dtype='int')
 
     # size of the negative samples in training set
     size_negative = round(alpha * len(X_train_positive))
@@ -30,9 +30,9 @@ def preprocessing_anomaly(X_train, y_train, X_test, y_test, alpha, normal_class,
     random_indices = np.random.choice(N - N_positive_total, size=size_negative, replace=False)
     X_train_negative = X_total[y_total != normal_class][random_indices]
     # collapse all the anomalous ts in one class
-    y_train_negative = np.array([-1] * len(random_indices))
+    y_train_negative = np.array([-1] * len(random_indices), dtype='int')
     X_test_negative= np.delete(X_total[y_total != normal_class], random_indices, axis=0)
-    y_test_negative = np.array([-1] * len(X_test_negative))
+    y_test_negative = np.array([-1] * len(X_test_negative), dtype='int')
 
     X_train_anomaly = np.concatenate((X_train_positive, X_train_negative), axis=0)
     y_train_anomaly = np.concatenate((y_train_positive, y_train_negative), axis=0)

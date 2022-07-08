@@ -3,6 +3,8 @@ import scipy
 import tslearn
 from tslearn import preprocessing
 from tslearn.datasets import CachedDatasets
+
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import matplotlib.pyplot as plt
 
 ################### DISTANCE FUNCTIONS IMPLEMENTATION ############
@@ -104,15 +106,50 @@ def sdist_mv(S, T):
         D2[q] = length_normalized_distance(seg, S)
     return np.min(D2)
 
-def plot_timeseries(X, Y, name='train'):
-    # Visualize the timeseries in the train and test set
-    colors = ['r', 'b', 'g', 'y', 'c']
-    plt.figure(figsize=(10, 5))
-    for ts, label in zip(X, y):
-        plt.plot(range(len(ts)), ts, c=colors[label%len(colors)])
-        plt.title(f'The timeseries in the {name} set')
-    plt.savefig('train_series.png')
-    return None
+################ DATA NORMALIZATION auxiliary class #############
+
+class Normalizer():
+    '''
+    Class for normalize the time series 
+    '''
+    def __init__(self, scaler):
+        '''
+        scaler must be a scaler from sklearn.preprocessing
+        '''
+        self.scaler = scaler
+        pass
+
+    def fit_normalize(self, X):
+        '''
+        @param X: time series np array shape (n_samples, len_samples, n_channels)
+        return: data normalized per channel
+        '''
+        shape = X.shape
+        n_channels = shape[2]
+        data_flat = X.reshape(-1, n_channels)
+        if self.scaler is None:
+            self.scaler = StandardScaler()
+            data_transformed = self.scaler.fit_transform(data_flat).reshape(shape)
+        else:
+            data_transformed = self.scaler.fit_transform(data_flat).reshape(shape)
+        return data_transformed
+    
+    def normalize(self, X):
+        'The scaler must be fitted before'
+        shape = X.shape
+        n_channels = shape[2]
+        data_flat = X.reshape(-1, n_channels)
+        data_transformed = self.scaler.transform(data_flat).reshape(shape)
+        return data_transformed
+
+# # multivariate test
+# x = [np.array([[1,2,3,4,5], [6,7,8,9,10]]), np.array([[34,2,23,4,5], [6,72,81,9,10]])]
+# x = np.array(x)
+# x = np.moveaxis(x, -1, 1)
+# x = x.reshape((-1,2))
+# scaler = MinMaxScaler()
+# x = scaler.fit_transform(x)
+
 
 ################### PERMISSIBLE ERRORS IMPLEMENTATION ####################
 
