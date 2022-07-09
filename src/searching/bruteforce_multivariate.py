@@ -56,14 +56,13 @@ class Bruteforce_extractor_mv():
                 sum = 0
                 for index in range(N):
                     # sum all the SQUARED sdists from every time series
-                    sum += util.sdist_mv(S, X[index,:,:])
+                    sum += util.sdist_mv(S, X[index,:,:])**2
                 # append also the index of the position of the shapelet
                 # don't use append numpy
                 sequences.append(S)
                 positions.append(j)
                 # take the mean
-                sum = sum/N
-                scores.append(sum)
+                scores.append(sum / N)
         sequences = np.array(sequences)
         positions = np.array(positions, dtype='int')
         scores = np.array(scores)

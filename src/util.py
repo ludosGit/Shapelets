@@ -7,6 +7,7 @@ from tslearn.datasets import CachedDatasets
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import matplotlib.pyplot as plt
 
+
 ################### DISTANCE FUNCTIONS IMPLEMENTATION ############
 
 def euclidean_distance(s1, s2):
@@ -26,6 +27,7 @@ def euclidean_distance(s1, s2):
 def length_normalized_distance(t1, t2):
     '''
     Returns ED between two time series of same length L, normalized by L
+    NOTE: both the series are shifted by their channel-wise mean
     :param t1: time series shape (L, C), with L length and C number of channels
     :param t2: time series shape (L, C)
     :return: euclidean length normalized distance

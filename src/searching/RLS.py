@@ -3,10 +3,10 @@ import numpy.random as random
 import time
 import sys
 sys.path.append("/Users/test1/Documents/TESI_Addfor_Industriale/Python_Projects_Shapelets/Shapelets_first_experiments-search_position")
-from trials import util
+from src import util
 from tqdm import trange
 import matplotlib.pyplot as plt
-from trials.util import euclidean_distance, sdist
+from src.util import euclidean_distance, sdist_mv
 import itertools
 
 ###################
@@ -17,7 +17,7 @@ class RLS_candidateset():
     ''' Class for storing information about a set of subsequences in a time series dataset:
     including values, starting positions, lengths and scores'''
 
-    def __init__(self, sequences=[], positions=np.array([], dtype='int'), lengths=np.array([], dtype='int'), scores=np.array([])):
+    def __init__(self, sequences=[], positions=[], lengths=[], scores=[]):
         '''
         sequences: list of numpy arrays of the sequences extracted
         positions: numpy array of their starting positions
@@ -26,9 +26,9 @@ class RLS_candidateset():
         '''
         assert (sequences==None or len(sequences) ==  len(positions) == len(lengths)), "Error: the information don't match"
         self.sequences = sequences
-        self.positions = positions
-        self.lengths = lengths
-        self.scores = scores
+        self.positions = np.array(positions, dtype='int')
+        self.lengths = np.array(lengths, dtype='int')
+        self.scores = np.array(scores)
 
     def __len__(self):
         return len(self.sequences)
@@ -52,11 +52,12 @@ class RLS_candidateset():
         self.lengths = np.delete(self.lengths, indexes)
         return self
 
+# add |length - L| <= eps[1]*step 
     def get_neighborhood(self, j , L, epsilon, beta=0):
         '''
         Take a percentage (1-beta)*100 of the subsequences that satisfy:
-        |position - j| < eps[0]
-        |length - L| < eps[1]
+        |position - j| <= eps[0]
+        |length - L| <= eps[1]
         and create a new RLS_candidateset object with those data
         ELIMINATE those sequences from self.
         NOTE: self.scores must be empty
@@ -188,7 +189,7 @@ class RLS_extractor():
 
     def __init__(self, train_data, test_data):
         '''
-        data: time series unlabeled dataset, nparray with shape (N,Q)
+        data: time series unlabeled dataset, numpy array with shape (N,Q,C)
         candidates_notscored: candidates for whom a score is not yet computed (RLS candidateset)
         candidates_scored: the ones with computed scores (RLS candidateset)
         '''
@@ -213,7 +214,7 @@ class RLS_extractor():
         lengths = []
         for i in range(N):
             for j in range(Q-L+1):
-                S = X[i, j:j+L]
+                S = X[i, j:j+L, :]
                 # append also the index of the position of the shapelet
                 # and index for the length
                 seq.append(S)
@@ -222,17 +223,18 @@ class RLS_extractor():
             # add all the extracted info to total
         positions = np.array(positions, dtype='int')
         lengths = np.array(lengths, dtype='int')
-        total_candidates = RLS_candidateset(seq, positions, lengths, scores=None)
+        total_candidates = RLS_candidateset(seq, positions, lengths, scores=[])
         return total_candidates
 
-    def get_random_candidates(self, r, L_star_min=0.3, L_star_max=None):
+    def get_random_candidates(self, r, L_min, L_max=None):
         '''
         Extract r random candidates of length from L_min to L_max included, 
         searching from the subsequences in self.data (train_data)
         Compute their scores and update self.candidates_scored
         NOTE: Update also all the candidates not scored in self.candidates_notscored
 
-        :param X: ndarray of shape (N, Q) with N time series all of the same length Q (can be modified for different lenghts)
+        :param X: ndarray of shape (N, Q, C) with N time series all of the same length Q (can be modified for different lenghts)
+        and C number of channels
         :param r: number of candidates to be selected randomly
         :param L_star_min: L_min = L_star_min* Q is their minimum length
         :param L_star_max: L_max = L_star_max* Q is their maximum length
@@ -240,11 +242,10 @@ class RLS_extractor():
         '''
         X = self.data
         N, Q = X.shape[0:2]
-        L_min = round(L_star_min * Q)
-        if L_star_max==None:
+
+        if L_max==None:
             L_max = L_min
-        else:
-            L_max = round(L_star_max * Q)
+    
         self.L_min = L_min
         self.L_max = L_max
 
@@ -277,8 +278,8 @@ class RLS_extractor():
             total_positions = np.append(total_positions, candidates.positions)
             total_lengths= np.append(total_lengths, candidates.lengths)
 
-        candidates_notscored = RLS_candidateset(total_seq, total_positions, total_lengths, scores=None)
-        random_candidates = RLS_candidateset(seq_random, positions_random, lengths_random, scores=None)
+        candidates_notscored = RLS_candidateset(total_seq, total_positions, total_lengths, scores=[])
+        random_candidates = RLS_candidateset(seq_random, positions_random, lengths_random, scores=[])
 
         # update candidates info
         self.candidates_notscored = candidates_notscored
@@ -300,8 +301,8 @@ class RLS_extractor():
             sum = 0
             for index in range(N):
                 # sum all the sdists from every time series
-                sum += util.sdist(S, X[index,:])
-            scores[i] = sum
+                sum += util.sdist(S, X[index,: ,:])**2
+            scores[i] = sum / N
         candidates.scores = scores     
         return candidates
 
@@ -332,7 +333,7 @@ class RLS_extractor():
             distance = euclidean_distance
         # if candidates have different lengths, I cannot use euclidean_distance
         else:
-            distance = sdist
+            distance = sdist_mv
         
         indexes = scores.argsort()
         if reverse:
@@ -383,8 +384,8 @@ class RLS_extractor():
             # print('boundary', similarity_boundary)
 
             # eliminate those shapelets too similar from the one considered
+            # or with position too near
             indexes = np.logical_or((similarity_distances < similarity_boundary), (abs(pos - positions) < pos_boundary))
-            # print('ind', indexes)
 
             # delete the indexes in the subsequences taking into account it is a list!!
             subsequences_removed = []
@@ -481,7 +482,7 @@ class RLS_extractor():
             return best_candidates  
         
 
-    def extract(self, r, m, pos_boundary=0, epsilon=(1,1), beta=0, reverse=False, K_star = 0.02, L_star_min=0.2, L_star_max=None):
+    def extract(self, r, m, L_min=0.2, L_max=None, pos_boundary=0, epsilon=(1,1), beta=0, reverse=False, K_star = 0.02):
         '''
         Extract the shapelets following RLS approach
         Update self.shapelets
@@ -496,17 +497,15 @@ class RLS_extractor():
         start_time = time.time()
         N, Q = self.data.shape[0:2]
         K = int(round(K_star*Q))
-        L_min = int(round(L_star_min*Q))
-        if L_star_max is None:
+        if L_max is None:
             print(f'Are going to be extracted {K} shapelets of length {L_min}')
         else:
-            L_max = int(round(L_star_max*Q))
             print(f'Are going to be extracted {K:.3f} shapelets of lengths between {L_min:.4f} and {L_max:.5f}')
     
         if reverse == True :
             print('Shapelets are going to be extracted in reverse order!')
         
-        _, random_candidates = self.get_random_candidates(r, L_star_min, L_star_max)
+        _, random_candidates = self.get_random_candidates(r, L_min, L_max)
         print('Finished to get random candidates')
         print('Calculating scores')
         self.compute_scores(random_candidates)
@@ -521,20 +520,6 @@ class RLS_extractor():
         print('Time for shapelets extraction:')
         print("--- %s seconds ---" % (time.time() - start_time))
         return shapelets
-
-    def plot_shapelets(self, path):
-        '''
-        plot shapelets and save figure in path
-        '''
-        S = self.shapelets.sequences
-        plt.figure()
-        for i in range(len(S)):
-            shap = S[i]
-            plt.plot(shap, label=f'shapelet{i+1}')
-            plt.legend()
-            plt.title('The extracted shapelets', fontweight="bold")
-        plt.savefig(path)
-        return None
 
     def transform(self):
         '''
@@ -554,12 +539,12 @@ class RLS_extractor():
             shapelet = S[k]
             for i in range(N_train):
                 T1 = X_train[i, :]
-                d = util.sdist(shapelet, T1)
+                d = util.sdist_mv(shapelet, T1)
                 X_train_transform[i, k] = d
             
             for j in range(N_test):
                 T2 = X_test[j, :]
-                d = util.sdist(shapelet, T2)
+                d = util.sdist_mv(shapelet, T2)
                 X_test_transform[j, k] = d
         return X_train_transform, X_test_transform
 
