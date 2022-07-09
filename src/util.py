@@ -14,7 +14,7 @@ def euclidean_distance(s1, s2):
     Compute the Frobenious norm of the matrix s1-s2 (with square root)
     :s1, s2: numpy arrays of same shape
     '''
-    return scipy.linalg.norm(s1 - s2)
+    return np.linalg.norm(s1 - s2)
 
 # ### TEST
 # x = np.array([[4,5], [9,10]])
@@ -23,25 +23,28 @@ def euclidean_distance(s1, s2):
 # np.sqrt(146)
 
 
-def length_normalized_distance(T1, T2):
+def length_normalized_distance(t1, t2):
     '''
     Returns ED between two time series of same length L, normalized by L
-    :param T1: time series shape (L, C), with L length and C number of channels
-    :param T2: time series shape (L, C)
+    :param t1: time series shape (L, C), with L length and C number of channels
+    :param t2: time series shape (L, C)
     :return: euclidean length normalized distance
-    NOTE: assume len(T1) == len(T2)
+    NOTE: assume len(t1) == len(t2)
     '''
     # this works also with multivariate shapelets
-    return np.sqrt(1/len(T1) * np.square(euclidean_distance(T1, T2)))
+    return np.sqrt(1/len(t1) * np.square(euclidean_distance((t1 - np.mean(t1, axis=0, keepdims=True)),(t2 - np.mean(t2, axis=0, keepdims=True)) )))
 
 # ### TEST
 # x = np.array([[1,2,3], [4,5,6]])
 # len(x)
 # x = np.transpose(x)
+# x - np.mean(x, axis=0, keepdims=True)
+
 # y = np.array([[1,0,3], [4,0,6]])
 # y = np.transpose(y)
-# x = np.array([1, 0])
-# y = np.array([0, 1])
+# x = np.array([1, 1]).reshape(-1,1)
+# y = np.array([20, 20]).reshape(-1,1)
+
 # length_normalized_distance(x, y)
 
 
@@ -105,6 +108,20 @@ def sdist_mv(S, T):
         seg = T[q:q + L,:] # q th segment of long series
         D2[q] = length_normalized_distance(seg, S)
     return np.min(D2)
+
+# ## TEST
+# S = np.array([1,2,3])
+# T = np.array([2,3,3,4,5])
+# S = S.reshape(3,1)
+# T = T.reshape(5,1)
+# sdist_mv(S,T)
+# sdist_mv(T,S)
+# S.shape
+# T = np.array([2,3,3])
+# sdist(S,T)
+# length_normalized_distance(S,T)
+# np.sqrt(sdist(S,T)**2*3)
+# euclidean_distance(S,T)
 
 ################ DATA NORMALIZATION auxiliary class #############
 

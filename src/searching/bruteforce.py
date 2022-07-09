@@ -3,11 +3,11 @@ import numpy.random as random
 import time
 import sys
 sys.path.append("/Documents/Shapelets_first_experiments")
-from trials import util
+from src import util
 from tqdm import trange
 import matplotlib.pyplot as plt
 from tslearn.metrics import dtw
-from trials.util import euclidean_distance
+from src.util import euclidean_distance
 
 ####################
 #  BRUTE FORCE SHAPELET EXTRACT FOR ANOMALY DETECTION

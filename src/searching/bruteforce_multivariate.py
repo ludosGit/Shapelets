@@ -38,7 +38,7 @@ class Bruteforce_extractor_mv():
     
     def extract_candidates(self, L_star=0.3):
         '''
-        From train_data of shape (N, Q), N number of time series, Q their length, extract all the candidates of length L_star * Q
+        From train_data of shape (N, Q, C), N number of time series, Q their length, extract all the candidates of length L_star * Q
         distance: distance measure for subsequnces of same length
         return: all the candidates as Candidateset object
         '''
@@ -56,7 +56,7 @@ class Bruteforce_extractor_mv():
                 sum = 0
                 for index in range(N):
                     # sum all the SQUARED sdists from every time series
-                    sum += util.sdist_mv(S, X[index,:,:])**2
+                    sum += util.sdist_mv(S, X[index,:,:])
                 # append also the index of the position of the shapelet
                 # don't use append numpy
                 sequences.append(S)
@@ -150,21 +150,6 @@ class Bruteforce_extractor_mv():
         print('Time for shapelets extraction:')
         print("--- %s seconds ---" % (time.time() - start_time))
         return shapelets
-
-    def plot_shapelets(self, path):
-        '''
-        Plot shapelets and save in path
-        '''
-        S = self.shapelets.sequences
-    
-        plt.figure()
-        for i in range(len(S)):
-            shap = S[i,:,]
-            plt.plot(shap, label=f'shapelet{i+1}')
-        plt.legend()
-        plt.title('The extracted shapelets')
-        plt.savefig(path)
-        return None
 
     def transform(self):
         '''
