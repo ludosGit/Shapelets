@@ -11,7 +11,7 @@ from tqdm import tqdm
 ### EUCLIDEAN DISTANCE LAYER:
 class DistanceLayer(nn.Module):
     """
-    Calculates the euclidean distances of a bunch of shapelets to a data set and performs global min-pooling.
+    Calculates the euclidean distances of a bunch of shapelets to a data using a sliding window and performs global min-pooling.
     Parameters
     ----------
     len_shapelets : int
@@ -35,14 +35,14 @@ class DistanceLayer(nn.Module):
         if self.to_cuda:
             shapelets = shapelets.cuda()
         self.shapelets = nn.Parameter(shapelets)
-        # Returns a contiguous in memory tensor 
         
         # otherwise gradients will not be backpropagated
         self.shapelets.retain_grad()
 
     def forward(self, x):
         """
-        1) Unfold the data set 2) calculate euclidean distance 3) sum over channels and 4) perform global min-pooling
+        1) Unfold the data set with sliding window 2) flatten() the patches w.r.t. the channel dimension 
+        3) calculate euclidean distance and 4) perform global min-pooling
         @param x: the time series data
         @type x: tensor(float) of shape (num_samples, in_channels, len_ts)
         @return: Return the euclidean for each pair of shapelet and time series instance
@@ -90,6 +90,7 @@ class DistanceLayer(nn.Module):
         self.shapelets = nn.Parameter(weights)
         self.shapelets.retain_grad()
 
+    # not used
     def set_weights_of_single_shapelet(self, j, weights):
         """
         Set the weights of a single shapelet.

@@ -11,16 +11,6 @@ class L1DistanceLoss(nn.Module):
     """
     Calculates the l1 similarity of a bunch of shapelets to a data set.
     It is the one we used as heuristic in the search methods.
-    Parameters
-    ----------
-    shapelets_size : int
-        the size of the shapelets / the number of time steps
-    num_shapelets : int
-        the number of shapelets that the block should contain
-    in_channels : int
-        the number of input channels of the dataset
-    cuda : bool
-        if true loads everything to the GPU
     """
     def __init__(self, dist_measure='euclidean'):
         super(L1DistanceLoss, self).__init__()
@@ -36,7 +26,6 @@ class L1DistanceLoss(nn.Module):
         @return: the computed loss
         @rtype: float
         """
-        # torch.topk: Returns the k largest (or smallest if largest=False) elements of the given input tensor along a given dimension.
         x = x.clamp(1e-8)
         # avoid compiler warning
         y_loss = None
@@ -53,37 +42,23 @@ class L1DistanceLoss(nn.Module):
 class L2DistanceLoss(nn.Module):
     """
     Calculates the l2 similarity of a bunch of shapelets to a data set.
-    It is the one we used as heuristic in the search methods.
-    Parameters
-    ----------
-    shapelets_size : int
-        the size of the shapelets / the number of time steps
-    num_shapelets : int
-        the number of shapelets that the block should contain
-    in_channels : int
-        the number of input channels of the dataset
-    cuda : bool
-        if true loads everything to the GPU
     """
     def __init__(self, dist_measure='euclidean'):
         super(L2DistanceLoss, self).__init__()
-        if not dist_measure == 'euclidean' and not dist_measure == 'cosine':
-            raise ValueError("Parameter 'dist_measure' must be either of 'euclidean' or 'cosine'.")
         self.dist_measure = dist_measure
 
     def forward(self, x):
         """
-        Calculate the loss as the average sum of the distances to each shapelet.
+        Calculate the loss as the average norm of the distances to each shapelet.
         @param x: the shapelet transform
         @type x: tensor(float) of shape (batch_size, n_shapelets)
         @return: the computed loss
         @rtype: float
         """
-        # torch.topk: Returns the k largest (or smallest if largest=False) elements of the given input tensor along a given dimension.
+
         x = x.clamp(1e-8)
         # avoid compiler warning
         y_loss = None
-        ## use L1 normalization
         if self.dist_measure == 'euclidean':
             y_loss = torch.mean(torch.norm(x, dim=1))
         return y_loss

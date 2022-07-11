@@ -22,12 +22,8 @@ class LearningShapelets():
     ----------
     len_shapelets:
     num_shapelets:
-    loss_func : torch.nn
-        the loss function
     in_channels : int
         the number of input channels of the dataset
-    num_classes : int
-        the number of output classes.
     dist_measure: `euclidean`, `cross-correlation`, or `cosine`
         the distance measure to use to compute the distances between the shapelets.
       and the time series.
