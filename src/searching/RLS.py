@@ -52,18 +52,19 @@ class RLS_candidateset():
         self.lengths = np.delete(self.lengths, indexes)
         return self
 
-# add |length - L| <= eps[1]*step 
-    def get_neighborhood(self, j , L, epsilon, beta=0):
+    def get_neighborhood(self, j , L, epsilon, step=1, beta=0):
         '''
         Take a percentage (1-beta)*100 of the subsequences that satisfy:
         |position - j| <= eps[0]
-        |length - L| <= eps[1]
+        |length - L| <= eps[1] * step
         and create a new RLS_candidateset object with those data
-        ELIMINATE those sequences from self.
+        ELIMINATE those sequences from self
         NOTE: self.scores must be empty
         Parameters:
         :j: position in the time series dataset, integer
         :L: length, integer
+        :epsilon: neighborhood range values
+        :step: step of lengths starting from L_min 
         :beta: percentage of neighbors to discard 
         return: N neighborhood of the sequence as RLS_candidateset object
         '''
@@ -73,7 +74,7 @@ class RLS_candidateset():
         N = RLS_candidateset()
 
         # boolean array: True means satisfy the condition
-        indexes_bool = np.logical_and(abs(self.positions -j) <= epsilon[0], abs(self.lengths - L) <= epsilon[1])
+        indexes_bool = np.logical_and(abs(self.positions -j) <= epsilon[0], abs(self.lengths - L) <= epsilon[1] * step)
         indexes = np.ndarray.flatten(np.argwhere(indexes_bool==True))
         A = len(indexes)
         sample_size = round(A * beta)
@@ -226,7 +227,7 @@ class RLS_extractor():
         total_candidates = RLS_candidateset(seq, positions, lengths, scores=[])
         return total_candidates
 
-    def get_random_candidates(self, r, L_min, L_max=None):
+    def get_random_candidates(self, r, L_min, step=1, n_steps=0):
         '''
         Extract r random candidates of length from L_min to L_max included, 
         searching from the subsequences in self.data (train_data)
@@ -243,8 +244,7 @@ class RLS_extractor():
         X = self.data
         N, Q = X.shape[0:2]
 
-        if L_max==None:
-            L_max = L_min
+        L_max = int(L_min + step * n_steps)
     
         self.L_min = L_min
         self.L_max = L_max
@@ -252,20 +252,21 @@ class RLS_extractor():
         seq_random = []
         positions_random = np.array([], dtype='int')
         lengths_random = np.array([], dtype='int')
-        r_length = int(r / (L_max - L_min +1)) 
+        r_size_per_length = round(r / (n_steps + 1))
 
         total_seq = []
         total_positions = np.array([], dtype='int')
         total_lengths = np.array([], dtype='int')
         # r_length number of random candidates for each length
         # extract r candidates subsequences equally divided in number w.r.t lengths
-        for L in range(L_min, L_max+1):
+
+        for L in range(L_min, L_max+1, step):
             # get all candidates of length L
             candidates = self.get_candidates(L)
 
             # take random candidates per length and append everything to the random vectors
             N_candidates = len(candidates.sequences)
-            random_sample = random.choice(range(N_candidates), size=r_length, replace=False)
+            random_sample = random.choice(range(N_candidates), size=r_size_per_length, replace=False)
             seq_random.extend([candidates.sequences[i] for i in random_sample])
             positions_random = np.append(positions_random, candidates.positions[random_sample])
             lengths_random = np.append(lengths_random, candidates.lengths[random_sample])
@@ -409,7 +410,7 @@ class RLS_extractor():
         return best_candidates
 
 
-    def LocalSearch(self, best_candidates, epsilon = (1,1), beta=0, reverse=False):
+    def LocalSearch(self, best_candidates, epsilon = (1,1), step=1, beta=0, reverse=False, maxiter=5):
         '''
         Perform a local search in candidate space, for each candidate search in self.candidates_notscored the neighbors:
         
@@ -427,14 +428,15 @@ class RLS_extractor():
         if reverse:
             # worst_score = min(best_candidates.scores)
             for i in range(len(best_candidates)):
-                print(f'Searching in sequence number {i} neighbors')
+                print(f'Searching in candidate number {i+1} neighbors')
                 j = best_candidates.positions[i]
                 L = best_candidates.lengths[i]
                 score = best_candidates.scores[i]
+                iter=0
                 
-                while True:
+                while iter < maxiter:
                     # the method get_neighborhood eliminates N from candidates_notscored
-                    N = candidates_notscored.get_neighborhood(j, L, epsilon, beta)
+                    N = candidates_notscored.get_neighborhood(j, L, epsilon, step, beta)
 
                     # compute scores and merge with scored candidates
                     N = self.compute_scores(N)
@@ -452,6 +454,7 @@ class RLS_extractor():
                     #update j and L to search 
                     j = N.positions[index]
                     L = N.lengths[index]
+                    iter += 1
             return best_candidates 
         
         ### CASE WE WANT SHAPELETS TO REPRESENT NORMAL CLASS
@@ -459,17 +462,18 @@ class RLS_extractor():
         else:
             # worst_score = max(best_candidates.scores)
             for i in range(len(best_candidates)):
-                print(f'Searching in sequence number {i} neighbors')
-                while True:
-                    j = best_candidates.positions[i]
-                    L = best_candidates.lengths[i]
-                    score = best_candidates.scores[i]
-                    N = candidates_notscored.get_neighborhood(j, L, epsilon, beta)
+                print(f'Searching in candidate number {i+1} neighbors')
+                j = best_candidates.positions[i]
+                L = best_candidates.lengths[i]
+                score = best_candidates.scores[i]
+                iter=0
+                while iter < maxiter:
+                    N = candidates_notscored.get_neighborhood(j, L, epsilon, step, beta)
 
                     N = self.compute_scores(N)
                     self.candidates_scored = self.candidates_scored.merge(N)
                     # min is the best score in the neighborhood if reverse is false
-                    if N.is_empty() or min(N.scores) >= score:
+                    if (N.is_empty() or min(N.scores) >= score):
                         # print(f'bad search the sequences {N.sequences} have scores {N.scores}')
                         break
                     best_candidates = best_candidates.merge(N)
@@ -479,10 +483,11 @@ class RLS_extractor():
                     #update j and L to search 
                     j = N.positions[index]
                     L = N.lengths[index]
+                    iter+=1
             return best_candidates  
         
 
-    def extract(self, r, m, L_min=0.2, L_max=None, pos_boundary=0, epsilon=(1,1), beta=0, reverse=False, K_star = 0.02):
+    def extract(self, r, m, L_min, step=1, n_steps=0, pos_boundary=0, epsilon=(1,1), beta=0, reverse=False, K_star = 0.02, maxiter=5):
         '''
         Extract the shapelets following RLS approach
         Update self.shapelets
@@ -497,25 +502,26 @@ class RLS_extractor():
         start_time = time.time()
         N, Q = self.data.shape[0:2]
         K = int(round(K_star*Q))
-        if L_max is None:
+        if n_steps==0:
             print(f'Are going to be extracted {K} shapelets of length {L_min}')
         else:
-            print(f'Are going to be extracted {K:.3f} shapelets of lengths between {L_min:.4f} and {L_max:.5f}')
+            L_max = int(L_min + step * n_steps)
+            print(f'Are going to be extracted {K} shapelets of lengths between {L_min} and {L_max}')
     
         if reverse == True :
             print('Shapelets are going to be extracted in reverse order!')
         
-        _, random_candidates = self.get_random_candidates(r, L_min, L_max)
+        _, random_candidates = self.get_random_candidates(r, L_min, step, n_steps)
         print('Finished to get random candidates')
         print('Calculating scores')
         self.compute_scores(random_candidates)
         best_candidates = self.get_top_candidates(random_candidates, m, pos_boundary, reverse)
-        print(f'finished to get top {m} candidates')
+        print(f'Finished to get top {m} candidates')
         print('Starting the local search')
-        best_candidates = self.LocalSearch(best_candidates, epsilon, beta, reverse)
-        print('finished local search')
+        best_candidates = self.LocalSearch(best_candidates, epsilon, step, beta, reverse, maxiter)
+        print('Finished local search')
         shapelets = self.get_top_candidates(best_candidates, K, pos_boundary, reverse)
-        print(f'finished to get top {K} candidates')
+        print(f'Finished to get top {K} candidates')
         self.shapelets = shapelets
         print('Time for shapelets extraction:')
         print("--- %s seconds ---" % (time.time() - start_time))
