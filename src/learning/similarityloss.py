@@ -34,8 +34,14 @@ class ShapeletsSimilarityLoss(nn.Module):
         x2 = x1 if x2 is None else x2
 
         L = x1.shape[2]
-        z = conv1d(x1, x2, padding=round(L/2))
+        # TODO: check all the shapes
+        # first normalize
+        # x1 = (x1 - torch.mean(x1, dim=1)) / torch.std(x1, dim=1)
+        # x2 = (x1 - torch.mean(x2, dim=1)) / torch.std(x2, dim=1)
+        # divide by the length
+        z = conv1d(x1, x2, padding=round(L/2)) / L
         z = torch.max(z, dim=2)[0].float()
+        # return the max normalized cross correlation w.r.t. the different lags
         return z
 
     def forward(self, shapelets):

@@ -23,6 +23,17 @@ def euclidean_distance(s1, s2):
 # euclidean_distance(x, y)
 # np.sqrt(146)
 
+def normalize_1d(x):
+    return (x - np.mean(x)) / np.std(x)
+
+def normalize_2d(x):
+    return (x - np.mean(x, axis=0, keepdims=True)) / np.std(x, axis=0, keepdims=True)
+
+# ### TEST
+# x = np.array([[1,2,3], [4,5,6]]).transpose(1,0)
+# normalize_2d(x)
+# x = np.array([1,2,3])
+# (x - 2) / np.std(x)
 
 def length_normalized_distance(t1, t2):
     '''
@@ -34,7 +45,9 @@ def length_normalized_distance(t1, t2):
     NOTE: assume len(t1) == len(t2)
     '''
     # this works also with multivariate shapelets
-    return np.sqrt(1/len(t1) * np.square(euclidean_distance((t1 - np.mean(t1, axis=0, keepdims=True)),(t2 - np.mean(t2, axis=0, keepdims=True)) )))
+    # return np.sqrt(1/len(t1) * np.square(euclidean_distance((t1 - np.mean(t1, axis=0, keepdims=True)),(t2 - np.mean(t2, axis=0, keepdims=True)) )))
+    return 1/len(t1) * euclidean_distance(normalize_2d(t1), normalize_2d(t2))
+
 
 # ### TEST
 # x = np.array([[1,2,3], [4,5,6]])
@@ -113,6 +126,7 @@ def sdist_mv(S, T):
 
 # ## TEST
 # S = np.array([1,2,3])
+# S.size
 # T = np.array([2,3,3,4,5])
 # S = S.reshape(3,1)
 # T = T.reshape(5,1)
@@ -125,9 +139,79 @@ def sdist_mv(S, T):
 # np.sqrt(sdist(S,T)**2*3)
 # euclidean_distance(S,T)
 
-################ DATA NORMALIZATION auxiliary class #############
+############### CROSS CORRELATION 
 
-class Normalizer():
+def xcorr(x, y, scale='biased'):
+    # Pad shorter array if signals are different lengths
+    if x.size > y.size:
+        pad_amount = x.size - y.size
+        y = np.append(y, np.repeat(0, pad_amount))
+    elif y.size > x.size:
+        pad_amount = y.size - x.size
+        x = np.append(x, np.repeat(0, pad_amount))
+
+    corr = np.correlate(x, y, mode='full')  # scale = 'none'
+    lags = np.arange(-(x.size - 1), x.size)
+
+    if scale == 'biased':
+        corr = corr / x.size
+    elif scale == 'unbiased':
+        corr /= (x.size - abs(lags))
+    elif scale == 'coeff':
+        corr /= np.sqrt(np.dot(x, x) * np.dot(y, y))
+    return corr
+
+# # TEST
+# x = np.array([1,1,1,1,5,5,5,1,1])
+# mu_x = np.mean(x)
+# sd_x = np.std(x)
+# x = (x - mu_x) / (sd_x)
+
+# y = np.array([1,5,5,5,1,1,1,1,1])
+# mu_y = np.mean(y)
+# sd_y = np.std(y)
+# y = (y - mu_y) /sd_y
+# z = xcorr(x,y)
+# z = np.correlate(x,y, mode='full')
+# max(z)
+
+
+def max_corr(x, y, scale='biased'):
+    '''
+    @param x,y: numpy arrays shape (n_observations, n_channels)
+    return: average of the max cross correlations of x and y channelwise
+    '''
+    n_channels = x.shape[1]
+    tmp = np.zeros(n_channels)
+    for c in range(n_channels):
+        tmp[c] = max(xcorr(normalize_1d(x[:,c]), normalize_1d(y[:,c]), scale=scale))
+    return np.mean(tmp)
+
+# # TEST
+# x = np.array([[1,2,3,1,1], [1,1,1,5,5]]).transpose(1,0)
+# y = np.array([[1,1,1,2,3], [1,1,1,5,5]]).transpose(1,0)
+# z = max_corr(x,y)
+# z
+# tmp = np.zeros(2)
+# for c in range(2):
+#     print(x[:,c].size)
+#     tmp[c] = max(xcorr(x[:,c], y[:,c], scale='biased'))
+# z = xcorr(normalize_1d(x[:,0]), normalize_1d(y[:,0]), scale='biased')
+# z = np.correlate(normalize_1d(x[:,1]), normalize_1d(y[:,1]), mode='full')
+# z = z / 5
+# max(z)
+
+
+max_corr(x,y)
+
+
+
+
+
+################ DATA NORMALIZATION auxiliary class #############
+# in order to normalize a dataset globally
+
+class Scaler():
     '''
     Class for normalize the time series 
     '''
@@ -138,7 +222,7 @@ class Normalizer():
         self.scaler = scaler
         pass
 
-    def fit_normalize(self, X):
+    def fit_transform(self, X):
         '''
         @param X: time series np array shape (n_samples, len_samples, n_channels)
         return: data normalized per channel
@@ -153,7 +237,7 @@ class Normalizer():
             data_transformed = self.scaler.fit_transform(data_flat).reshape(shape)
         return data_transformed
     
-    def normalize(self, X):
+    def transform(self, X):
         'The scaler must be fitted before'
         shape = X.shape
         n_channels = shape[2]
@@ -164,6 +248,8 @@ class Normalizer():
 # # multivariate test
 # x = [np.array([[1,2,3,4,5], [6,7,8,9,10]]), np.array([[34,2,23,4,5], [6,72,81,9,10]])]
 # x = np.array(x)
+# x[0].size
+# len(x[0])
 # x = np.moveaxis(x, -1, 1)
 # x = x.reshape((-1,2))
 # scaler = MinMaxScaler()
