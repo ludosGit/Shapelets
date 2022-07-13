@@ -1,13 +1,36 @@
+from hashlib import sha3_512
 import numpy as np
 import numpy.random as random
 import time
 import sys
 sys.path.append("/Documents/Shapelets_first_experiments")
 from src import util
-from src.util import euclidean_distance, sdist_mv
+from src.util import euclidean_distance, sdist_mv, max_corr
 from tqdm import trange
 import matplotlib.pyplot as plt
 from tslearn.metrics import dtw
+
+
+
+# auxiliary function to continue while loop
+def test_corr(s1, seq_final):
+    '''
+    @param s1: shapelet candidate
+    @param seq_final: list  of shapelets
+    return: True if there exist a shapelet in seq_final with correlation >= 0.8 with the candidate
+    '''
+    for s2 in seq_final:
+        print(s2)
+        corr = max_corr(s2, s1, scale='biased')
+        print(corr)
+        if corr >= 0.8:
+            return True
+    return False
+
+# # TEST
+# x = [np.array([2,5,6,2,7]).reshape(-1,1), np.array([1,2,3,3,3]).reshape(-1,1)]
+# y = np.array([1,1,3,3,3,]).reshape(-1,1)
+# test_corr(y, x)
 
 ####################
 #  BRUTE FORCE SHAPELET EXTRACT FOR ANOMALY DETECTION MULTIVARIATE DATASET
@@ -56,7 +79,7 @@ class Bruteforce_extractor_mv():
                 sum = 0
                 for index in range(N):
                     # sum all the SQUARED sdists from every time series
-                    sum += util.sdist_mv(S, X[index,:,:])**2
+                    sum += util.sdist_mv(S, X[index,:,:])
                 # append also the index of the position of the shapelet
                 # don't use append numpy
                 sequences.append(S)
@@ -96,32 +119,52 @@ class Bruteforce_extractor_mv():
         seq_final = [sequences[0]]
         positions_final = [positions[0]]
         scores_final = [scores[0]]
-        k = 0
-        while len(seq_final) != K:
-            S1 = seq_final[k]
-            pos = positions_final[k]
-            similarity_distances = []
-            # iterate over all the candidates:
-            for p in range(len(sequences)):
-                S2 = sequences[p]
-                d = euclidean_distance(S1,S2)
-                # p is the index of the subsequence and d its distance to the last discovered shapelet
-                similarity_distances.append(d)
-            similarity_distances = np.array(similarity_distances)
-            similarity_boundary = 0.1 * np.median(similarity_distances)
-            # eliminate those candidates that don't satisfy the constraints
 
-            indexes = np.logical_or((similarity_distances < similarity_boundary), (abs(positions - pos) < pos_boundary))
-            sequences = np.delete(sequences, indexes, axis=0)
-            positions = np.delete(positions, indexes, axis=0)
-            scores = np.delete(scores, indexes, axis=0)
+        while len(seq_final) != K or len(sequences)==0:
+            s1 = sequences[0]
+            if test_corr(s1, seq_final):
+                sequences = np.delete(sequences, 0, axis=0)
+                positions = np.delete(positions, 0, axis=0)
+                scores = np.delete(scores, 0, axis=0)
+                continue
 
-            seq_final.append(sequences[0])
+            seq_final.append(s1)
             positions_final.append(positions[0])
             scores_final.append(scores[0])
-            k += 1
+
+            sequences = np.delete(sequences, 0, axis=0)
+            positions = np.delete(positions, 0, axis=0)
+            scores = np.delete(scores, 0, axis=0)
+
         shapelets = Candidateset(seq_final, positions_final, scores_final)
+        self.shapelets = shapelets
         return shapelets
+
+# # TEST
+# sequences = np.array([1,1,2])
+# seq_final = [0]
+# positions_final = [0]
+# scores_final = [0]
+
+# def dowork():
+#     for s2 in seq_final:
+#         corr = (s1 + s2)
+#         print(corr)
+#         if corr == 1:
+#             return True
+
+# while len(seq_final) != 2:
+#     s1 = sequences[0]
+#     if dowork(sequences):
+#         sequences = np.delete(sequences, 0)
+#         continue
+#     seq_final.append(s1)
+
+# x = [1,1,2]
+# for i in x:
+#     if i==1:
+#         continue
+#     print(i)
 
     def extract_shapelets(self, K_star=0.1, L_star=0.3, pos_boundary=0, reverse=False):
         '''

@@ -7,7 +7,7 @@ from src import util
 from tqdm import trange
 import matplotlib.pyplot as plt
 from tslearn.metrics import dtw
-from src.util import euclidean_distance
+from src.util import euclidean_distance, max_corr
 
 ####################
 #  BRUTE FORCE SHAPELET EXTRACT FOR ANOMALY DETECTION
@@ -92,33 +92,53 @@ class Bruteforce_extractor():
         seq_final = [sequences[0]]
         positions_final = [positions[0]]
         scores_final = [scores[0]]
-        k = 0
+
+        # auxiliary function
+        def test_corr():
+            for s2 in seq_final:
+                corr = max_corr(s2, s1, scale='biased')
+                if corr >= 0.8:
+                    return True
+        
         while len(seq_final) != K:
-            S1 = seq_final[k]
-            pos = positions_final[k]
-            similarity_distances = []
-            # iterate over all the candidates:
-            for p in range(len(sequences)):
-                S2 = sequences[p]
-                d = euclidean_distance(S1,S2)
-                # p is the index of the subsequence and d its distance to the last discovered shapelet
-                similarity_distances.append(d)
-            similarity_distances = np.array(similarity_distances)
-            similarity_boundary = 0.1 * np.median(similarity_distances)
-            # eliminate those candidates that don't satisfy the constraints
-
-            indexes = np.logical_or((similarity_distances < similarity_boundary), (abs(positions - pos) < pos_boundary))
-            sequences = np.delete(sequences, indexes, axis=0)
-            positions = np.delete(positions, indexes, axis=0)
-            scores = np.delete(scores, indexes, axis=0)
-
-            seq_final.append(sequences[0])
+            s1 = sequences[0]
+            if test_corr():
+                sequences = np.delete(sequences, 0, axis=0)
+                positions = np.delete(positions, 0, axis=0)
+                scores = np.delete(scores, 0, axis=0)
+                continue
+            seq_final.append(s1)
             positions_final.append(positions[0])
             scores_final.append(scores[0])
-            k += 1
         shapelets = Candidateset(seq_final, positions_final, scores_final)
         self.shapelets = shapelets
         return shapelets
+
+# # TEST
+# sequences = np.array([1,1,2])
+# seq_final = [0]
+# positions_final = [0]
+# scores_final = [0]
+
+# def dowork():
+#     for s2 in seq_final:
+#         corr = (s1 + s2)
+#         print(corr)
+#         if corr == 1:
+#             return True
+
+# while len(seq_final) != 2:
+#     s1 = sequences[0]
+#     if dowork(sequences):
+#         sequences = np.delete(sequences, 0)
+#         continue
+#     seq_final.append(s1)
+
+# x = [1,1,2]
+# for i in x:
+#     if i==1:
+#         continue
+#     print(i)
 
     def extract_shapelets(self, K_star=0.1, L_star=0.3, pos_boundary=0, reverse=False):
         '''

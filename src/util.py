@@ -27,7 +27,11 @@ def normalize_1d(x):
     return (x - np.mean(x)) / np.std(x)
 
 def normalize_2d(x):
-    return (x - np.mean(x, axis=0, keepdims=True)) / np.std(x, axis=0, keepdims=True)
+    '''
+    normalize x channel wise
+    @param x: time series shape (n_observations, n_channels)
+    '''
+    return (x - np.mean(x, axis=0, keepdims=True)) # / np.std(x, axis=0, keepdims=True)
 
 # ### TEST
 # x = np.array([[1,2,3], [4,5,6]]).transpose(1,0)
@@ -47,7 +51,6 @@ def length_normalized_distance(t1, t2):
     # this works also with multivariate shapelets
     # return np.sqrt(1/len(t1) * np.square(euclidean_distance((t1 - np.mean(t1, axis=0, keepdims=True)),(t2 - np.mean(t2, axis=0, keepdims=True)) )))
     return 1/len(t1) * euclidean_distance(normalize_2d(t1), normalize_2d(t2))
-
 
 # ### TEST
 # x = np.array([[1,2,3], [4,5,6]])
@@ -201,8 +204,6 @@ def max_corr(x, y, scale='biased'):
 # z = z / 5
 # max(z)
 
-
-max_corr(x,y)
 
 
 
