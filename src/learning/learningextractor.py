@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import warnings
 import sys
+from zlib import Z_RLE
 sys.path.append('../../')
 
 import numpy as np
@@ -10,7 +11,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 from src.learning.distancelayer import DistanceLayer
-from src.learning.distanceloss import L2DistanceLoss
+from src.learning.distanceloss import L2DistanceLoss, SVDD_L2DistanceLoss
 from src.SVDD import SVDD
 
 ################### CLASS for a shapelet - learning extractor 
@@ -34,7 +35,10 @@ class LearningShapelets():
     """
 
     def __init__(self, len_shapelets, num_shapelets, in_channels=1, \
-        dist_measure='euclidean', verbose=0, to_cuda=True):
+        radius=0, C=1, verbose=0, to_cuda=True):
+        '''
+        @param radius: initial radius of SVDD boundary
+        '''
 
         self.model = DistanceLayer(len_shapelets, num_shapelets, in_channels, to_cuda)
         self.to_cuda = to_cuda
@@ -43,9 +47,10 @@ class LearningShapelets():
 
         self.len_shapelets = len_shapelets
         self.num_shapelets = num_shapelets
-        self.loss_func = L2DistanceLoss(dist_measure=dist_measure)
+        self.loss_func = SVDD_L2DistanceLoss(radius=radius)
         self.verbose = verbose
         self.optimizer = None
+        self.C = C
 
         # TODO: add shapelet similarity loss
         # self.loss_sim_block = ShapeletsSimilarityLoss()
@@ -90,19 +95,13 @@ class LearningShapelets():
         self.optimizer.zero_grad()
         return loss.item()
 
-    ## for now not used
+    def compute_radius(self, X, tol=1e-7):
 
-    def loss_sim(self):
-        """
-        Get the weights of each shapelet block and calculate the cosine distance between the
-        shapelets inside each block and return the summed distances as their similarity loss.
-        @return: the shapelet similarity loss for the batch
-        @rtype: float
-        """
-        blocks = [params for params in self.model.named_parameters() if 'shapelets_blocks' in params[0]]
-        loss = self.loss_sim_block(blocks)
-        return loss
-
+        X = self.transform(X) # numpy array shape (n_samples, n_shapelets)
+        svdd = SVDD.SVDD(C=self.C, zero_center=True, verbose=False, tol=tol)
+        svdd.fit(X)
+        self.loss_func.update_r(svdd.radius)
+        return None
 
     def fit(self, X, Y=None, epochs=1, batch_size=256, shuffle=False, drop_last=False):
         """
@@ -151,13 +150,13 @@ class LearningShapelets():
         # current_loss_sim = 0
         # print('shape of X before starting', X.shape)
         for _ in progress_bar: # for each epoch
+            self.compute_radius(X)
             for j, x in enumerate(train_dl):
                 x = x[0] # items in dataloader are lists because a label is supposed
                 # print('shape of the batches', x.shape)
                 current_loss_dist = self.update(x)
                 losses_dist.append(current_loss_dist)
             progress_bar.set_description(f"Loss: {current_loss_dist}")
-    
         return losses_dist
 
     def transform(self, X):
@@ -166,7 +165,7 @@ class LearningShapelets():
         @param X: the time series data
         @type X: tensor(float) of shape (n_samples, in_channels, len_ts)
         @return: the shapelet transform of x
-        @rtype: tensor(float) of shape (num_samples, num_shapelets)
+        @rtype: numpy array (float) of shape (num_samples, num_shapelets)
         """
         if not isinstance(X, torch.Tensor):
             X = torch.tensor(X, dtype=torch.float)

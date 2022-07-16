@@ -6,11 +6,11 @@ sys.path.append("/Users/test1/Documents/TESI_Addfor_Industriale/Python_Projects_
 from src import util
 from tqdm import trange
 import matplotlib.pyplot as plt
-from src.util import euclidean_distance, sdist_mv
+from src.util import euclidean_distance, sdist_mv, euclidean_distance_shifted, max_corr, mean_shift
 import itertools
 
 ###################
-#  Implement random local search algorithm for UNIVARIATE time series
+#  Implement random local search algorithm
 ###################
 
 class RLS_candidateset():
@@ -302,12 +302,52 @@ class RLS_extractor():
             sum = 0
             for index in range(N):
                 # sum all the sdists from every time series
-                sum += util.sdist(S, X[index,: ,:])**2
+                sum += util.sdist_mv(S, X[index,: ,:])
             scores[i] = sum / N
         candidates.scores = scores     
         return candidates
 
-    def get_top_candidates(self, candidates, m, pos_boundary=0, reverse=False):
+    def compute_boundary(self, s1, sequences, distance):
+        similarity_distances = []
+            # iterate over all the candidates:
+        for p in range(len(sequences)):
+            s2 = sequences[p]
+            d = distance(s1, s2)
+            # p is the index of the subsequence and d its distance to the last discovered shapelet
+            similarity_distances.append(d)
+        similarity_distances = np.array(similarity_distances)
+        similarity_boundary = 0.1 * np.median(similarity_distances)
+        return similarity_boundary
+
+    def test_position(self, s1, pos1, best_subsequences, best_positions, similarity_boundary, pos_boundary, distance):
+        '''
+        test if a candidate is suitable to be added to seq_final, list that contains the shapelets discovered so far
+        @param seq_final: list of numpy arrays
+        @param positions_final: list of integers with same length
+        '''
+        for i in range(len(best_subsequences)):
+            s2 = best_subsequences[i]
+            pos2 = best_positions[i]
+            dist = distance(s1, s2)
+            if (abs(pos1 - pos2) < pos_boundary) or (dist < similarity_boundary):
+                return True
+        return False
+
+    def test_corr(self, s1, best_subsequences, similarity_boundary, corr_threshold):
+        '''
+        @param s1: shapelet candidate
+        @param seq_final: list  of shapelets
+        @param similarity_boundary: similarity threshold calculated from 
+        return: True if there exist a shapelet in seq_final with correlation >= 0.8 with the candidate
+        '''
+        for s2 in best_subsequences:
+            corr = max_corr(s2, s1, scale='biased')
+            dist = euclidean_distance(mean_shift(s1), mean_shift(s2))
+            if ((corr >= corr_threshold) or (dist < similarity_boundary)):
+                return True
+        return False
+    
+    def get_top_candidates(self, candidates, m, pos_boundary=None, corr_threshold=None, reverse=False):
         '''
         Extract best m best candidates in a RLS_candidateset object with computed scores.
         They must satisfy (for each i,j selected as best candidates) :
@@ -331,7 +371,8 @@ class RLS_extractor():
         
         # Set distance measure to evaluate similarity between candidates:
         if self.L_min == self.L_max:
-            distance = euclidean_distance
+            distance = euclidean_distance_shifted
+
         # if candidates have different lengths, I cannot use euclidean_distance
         else:
             distance = sdist_mv
@@ -341,71 +382,79 @@ class RLS_extractor():
             indexes = indexes[::-1]
         
         subsequences = [candidates.sequences[i] for i in indexes]
-        # print('ordered subse', subsequences)
-        # print('the scores', scores)
+
         positions = candidates.positions[indexes]
         lengths = candidates.lengths[indexes]
         scores = scores[indexes]
 
         # take the first one
+
         best_subsequences = [subsequences[0]]
-        # print('best', best_subsequences)
-        # print('len', len(best_subsequences))
-        best_positions = np.array([positions[0]])
-        best_lengths = np.array([lengths[0]])
-        best_scores = np.array([scores[0]])
+        best_positions = [positions[0]]
+        best_lengths = [lengths[0]]
+        best_scores = [scores[0]]
+
+        # delete it from the list of sequences
+
+        del subsequences[0]
+        positions = np.delete(positions, 0, axis=0)
+        lengths = np.delete(lengths, 0, axis=0)
+        scores = np.delete(scores, 0, axis=0)
+
         k = 0
 
-        while len(best_subsequences) != m or len(subsequences)==0:
-            S1 = best_subsequences[k]
-            pos = best_positions[k]
+        if pos_boundary is not None:
+            print(f'Candidates are being filtered by a position threshold of {pos_boundary} time steps')
+        elif corr_threshold is not None:
+            print(f'Candidates are being filtered by a correlation threshold of {corr_threshold}')
+        
+        # start the candidates' selection
+        while len(best_subsequences) != m:
 
+            s1 = subsequences[0]
+            pos1 = positions[0]
+            score1 = scores[0]
+            len1 = lengths[0]
             # calculate similarity boundary wrt all the sequences already scored
             # this prevents to have extreme cases
-            similarity_distances_total = []
-            for p in range(len(self.candidates_scored)):
-                S2 = self.candidates_scored.sequences[p]
-                d = distance(S1,S2)
-                # p is the index of the subsequence and d its distance to the last discovered shapelet
-                similarity_distances_total.append(d)
-            # this works only if candidates have the same length!!
-            similarity_distances_total = np.array(similarity_distances_total)
-            # print('dist', similarity_distances)
-            similarity_boundary = 0.1 * np.median(similarity_distances_total)
+            similarity_boundary = self.compute_boundary(s1, self.candidates_scored.sequences, distance)
 
-            # now calculate the distances of the smaller set in input:
-            similarity_distances = []
-            for p in range(len(subsequences)):
-                S2 = subsequences[p]
-                d = distance(S1,S2)
-                # p is the index of the subsequence and d its distance to the last discovered shapelet
-                similarity_distances.append(d)
-            # this works only if candidates have the same length!!
-            similarity_distances = np.array(similarity_distances)
-            # print('boundary', similarity_boundary)
+            if pos_boundary is not None:
+                if self.test_position(s1, pos1, best_subsequences, best_positions, \
+                    similarity_boundary, pos_boundary, distance):
+                    del subsequences[0]
+                    positions = np.delete(positions, 0, axis=0)
+                    lengths = np.delete(lengths, 0, axis=0)
+                    scores = np.delete(scores, 0, axis=0)
+                    
+                    if len(subsequences)==0:
+                        break
+                    continue
 
-            # eliminate those shapelets too similar from the one considered
-            # or with position too near
-            indexes = np.logical_or((similarity_distances < similarity_boundary), (abs(pos - positions) < pos_boundary))
+            if corr_threshold is not None:
+                if self.test_corr(s1, best_subsequences, similarity_boundary, corr_threshold):
+                    del subsequences[0]
+                    positions = np.delete(positions, 0, axis=0)
+                    lengths = np.delete(lengths, 0, axis=0)
+                    scores = np.delete(scores, 0, axis=0)
+                    
+                    if len(subsequences)==0:
+                        break
+                    continue
 
-            # delete the indexes in the subsequences taking into account it is a list!!
-            subsequences_removed = []
-            for i in range(len(subsequences)):
-                if not indexes[i]:
-                    subsequences_removed.append(subsequences[i])
-            subsequences = subsequences_removed
+            best_subsequences.append(s1)
+            best_positions.append(pos1)
+            best_scores.append(score1)
+            best_lengths.append(len1)
 
-            # delete the others using numpy
-            positions = np.delete(positions, indexes, axis=0)
-            scores = np.delete(scores, indexes, axis=0)
-            lengths = np.delete(lengths, indexes, axis=0)
+            del subsequences[0]
+            positions = np.delete(positions, 0, axis=0)
+            lengths = np.delete(lengths, 0, axis=0)
+            scores = np.delete(scores, 0, axis=0)
 
-            best_subsequences.append(subsequences[0])
-            best_positions = np.append(best_positions, positions[0])
-            best_scores = np.append(best_scores, scores[0])
-            best_lengths = np.append(best_lengths, lengths[0])
-            k += 1
-        
+            if len(subsequences)==0:
+                break 
+
         best_candidates = RLS_candidateset(best_subsequences, best_positions, best_lengths, best_scores)
         return best_candidates
 
@@ -426,7 +475,6 @@ class RLS_extractor():
 
         ### CASE WE WANT SHAPELETS IN REVERSE ORDER
         if reverse:
-            # worst_score = min(best_candidates.scores)
             for i in range(len(best_candidates)):
                 print(f'Searching in candidate number {i+1} neighbors')
                 j = best_candidates.positions[i]
@@ -460,7 +508,6 @@ class RLS_extractor():
         ### CASE WE WANT SHAPELETS TO REPRESENT NORMAL CLASS
 
         else:
-            # worst_score = max(best_candidates.scores)
             for i in range(len(best_candidates)):
                 print(f'Searching in candidate number {i+1} neighbors')
                 j = best_candidates.positions[i]
@@ -545,12 +592,12 @@ class RLS_extractor():
             shapelet = S[k]
             for i in range(N_train):
                 T1 = X_train[i, :]
-                d = util.sdist_mv(shapelet, T1)
+                d = np.sqrt(util.sdist_mv(shapelet, T1))
                 X_train_transform[i, k] = d
             
             for j in range(N_test):
                 T2 = X_test[j, :]
-                d = util.sdist_mv(shapelet, T2)
+                d = np.sqrt(util.sdist_mv(shapelet, T2))
                 X_test_transform[j, k] = d
         return X_train_transform, X_test_transform
 

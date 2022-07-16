@@ -14,9 +14,6 @@ class L1DistanceLoss(nn.Module):
     """
     def __init__(self, dist_measure='euclidean'):
         super(L1DistanceLoss, self).__init__()
-        if not dist_measure == 'euclidean' and not dist_measure == 'cosine':
-            raise ValueError("Parameter 'dist_measure' must be either of 'euclidean' or 'cosine'.")
-        self.dist_measure = dist_measure
 
     def forward(self, x):
         """
@@ -28,10 +25,8 @@ class L1DistanceLoss(nn.Module):
         """
         x = x.clamp(1e-8)
         # avoid compiler warning
-        y_loss = None
-        ## use L1 normalization
-        if self.dist_measure == 'euclidean':
-            y_loss = torch.mean(torch.sum(x, dim=1))
+        # use L1 normalization
+        y_loss = torch.mean(torch.sum(x, dim=1))
         return y_loss
 
 # x = torch.Tensor([[1,2,3,4], [6,7,8,9], [5,10,11,4], [4,2,23,4], [6,2,81,9], [11,10,13,5]])
@@ -43,9 +38,8 @@ class L2DistanceLoss(nn.Module):
     """
     Calculates the l2 similarity of a bunch of shapelets to a data set.
     """
-    def __init__(self, dist_measure='euclidean'):
+    def __init__(self):
         super(L2DistanceLoss, self).__init__()
-        self.dist_measure = dist_measure
 
     def forward(self, x):
         """
@@ -55,15 +49,51 @@ class L2DistanceLoss(nn.Module):
         @return: the computed loss
         @rtype: float
         """
-
         x = x.clamp(1e-8)
         # avoid compiler warning
-        y_loss = None
-        if self.dist_measure == 'euclidean':
-            y_loss = torch.mean(torch.norm(x, dim=1))
+        y_loss = torch.mean(torch.norm(x, dim=1))
         return y_loss
 
-x = torch.Tensor([[1,2,3,4], [6,7,8,9], [5,10,11,4], [4,2,23,4], [6,2,81,9], [11,10,13,5]])
-# 6 rows for columns
-torch.norm(x, dim=1)
-# along the columns!!
+# x = torch.Tensor([[1,2,3,4], [6,7,8,9], [5,10,11,4], [4,2,23,4], [6,2,81,9], [11,10,13,5]])
+# # 6 rows for columns
+# torch.norm(x, dim=1)
+# # along the columns!!
+
+class SVDD_L2DistanceLoss(nn.Module):
+    """
+    Calculates the l2 similarity of a bunch of shapelets to a data set.
+    """
+    def __init__(self, radius):
+        super(SVDD_L2DistanceLoss, self).__init__()
+        self.radius = radius
+
+    def update_r(self, radius):
+        self.radius = radius
+
+    def forward(self, x):
+        """
+        Calculate the loss as the average norm of the distances to each shapelet.
+        @param x: the shapelet transform
+        @type x: tensor(float) of shape (batch_size, n_shapelets)
+        @return: the computed loss
+        @rtype: float
+        """
+        x = x.clamp(1e-8)
+        # avoid compiler warning
+        l1 = torch.norm(x, dim=1)
+        # the radius is squared!!
+        l2 = l1 - self.radius
+
+        l2[l2 < 0] = 0 
+        l2 = torch.sum(l2) / torch.count_nonzero(l2)
+        loss = l2 + torch.mean(l1)
+        return loss
+
+# x = torch.Tensor([[1,2,3,4], [6,7,8,9], [5,10,11,4], [4,2,23,4], [6,2,81,9], [11,10,13,5]])
+# # 6 rows for columns
+# torch.norm(x, dim=1) - 1
+# # along the columns!!
+
+# x = torch.Tensor([1,2,0,0])
+# torch.count_nonzero(x)
+

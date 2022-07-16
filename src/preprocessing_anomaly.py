@@ -1,10 +1,10 @@
 import numpy as np
 
-def preprocessing_anomaly(X_train, y_train, X_test, y_test, alpha, normal_class, normal_prop=0.8):
+def preprocessing_anomaly(X_train, y_train, X_test, y_test, alpha, normal_class, normal_prop=0.8, valid_prop = 0):
     '''
     Transform the dataset in a new one for anomaly detection according to Beggel's paper
     @param alpha: parameter to control the proportion of normal - anomalies
-    @paramnormal_class: indicate label of the normal class
+    @param normal_class: indicate label of the normal class
     @param normal_prop: indicates the proportion of normal instances in training set w.r.t. the total number
                         default is 0.8 that means 80% of normal series go into training set (as in Beggel's paper)
     '''
@@ -40,4 +40,22 @@ def preprocessing_anomaly(X_train, y_train, X_test, y_test, alpha, normal_class,
     X_test_anomaly = np.concatenate((X_test_positive, X_test_negative), axis=0)
     y_test_anomaly = np.concatenate((y_test_positive, y_test_negative), axis=0)
 
-    return X_train_anomaly, y_train_anomaly, X_test_anomaly, y_test_anomaly
+    if valid_prop ==0:
+        return X_train_anomaly, y_train_anomaly, X_test_anomaly, y_test_anomaly
+    
+    # create validation set
+    n_test, _, _ = X_test_anomaly.shape
+    size_valid = round(valid_prop * n_test)
+    valid_indices = np.random.choice(n_test, size=size_valid, replace=False)
+
+    X_valid_anomaly = X_test_anomaly[valid_indices]
+    y_valid_anomaly = y_test_anomaly[valid_indices]
+
+    X_test_anomaly = np.delete(X_test_anomaly, valid_indices, axis=0)
+    y_test_anomaly = np.delete(y_test_anomaly, valid_indices, axis=0)
+
+    return X_train_anomaly, y_train_anomaly, X_test_anomaly, y_test_anomaly, X_valid_anomaly, y_valid_anomaly
+
+
+
+

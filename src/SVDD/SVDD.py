@@ -9,23 +9,55 @@ import cvxopt.solvers
 def linear_kernel(x1, x2):
     return np.dot(x1, x2)
 
-def polynomial_kernel(x, y, p=3):
-    return (1 + np.dot(x, y)) ** p
+class polynomial_kernel():
+    def __init__(self, p=3):
+        self.p = p
+    
+    def kernel(self, x, y):
+        return (1 + np.dot(x, y)) ** self.p
 
-def gaussian_kernel(x, y, sigma=5.0):
-    return np.exp(-linalg.norm(x-y)**2 / (2 * (sigma ** 2)))
+class gaussian_kernel():
+    def __init__(self, sigma=3):
+        self.sigma = sigma
+    
+    def kernel(self, x, y):
+        return np.exp(-linalg.norm(x-y)**2 / (2 * (self.sigma ** 2)))
+
+# g = gaussian_kernel(sigma=2).kernel
+# g(2,3)
+
+
 
 class SVDD(object):
 
-    def __init__(self, kernel=linear_kernel, C=0.9, zero_center = False, tol=1e-6):
-        self.kernel = kernel
+    def __init__(self, kernel='linear', C=0.9, zero_center = False, p=3, sigma=5, tol=1e-6, verbose=True):
+        '''
+        Class of SVDD
+        @param kernel:
+        @param C:
+        @param zero_center: whether to fix the center = 0
+        @param p: only for poly kernel
+        @param sigma: only for rbf kernel
+        @param tol: tolerance for considering the lagrange multipliers alpha > 0 or < C
+        '''
+        if kernel == 'linear':
+            self.kernel = linear_kernel
+
+        if kernel == 'poly':
+            self.kernel = polynomial_kernel(p).kernel
+
+        if kernel == 'rbf':
+            self.kernel = gaussian_kernel(sigma).kernel
+
         self.C = C
         if self.C is not None: self.C = float(self.C)
+
         self.zero_center = zero_center
         self.tol = tol
         self.gram = None
         self.radius = None
         self.center = None
+        self.verbose = verbose
 
     def compute_radius(self):
         '''RADIUS (squared)
@@ -91,8 +123,6 @@ class SVDD(object):
             self.boundary_sv = X[boundary_sv]
             self.boundary_sv_index = np.arange(len(alpha))[boundary_sv]
     
-            print("%d support vectors out of %d points" % (len(self.alpha), n_samples))
-    
             # CENTER
             self.center = np.zeros(n_features)
             # consider only support vectors!!
@@ -101,7 +131,9 @@ class SVDD(object):
             
             # RADIUS
             self.radius = self.compute_radius()
-            print(f'Solution found with center in {self.center} and radius {np.sqrt(self.radius)}')
+            if self.verbose:
+                print("%d support vectors out of %d points" % (len(self.alpha), n_samples))
+                print(f'Solution found with center in {self.center} and radius {np.sqrt(self.radius)}')
 
         ###### Modified SVDD with the center in the ORIGIN
         else:
@@ -138,8 +170,6 @@ class SVDD(object):
             self.boundary_sv = X[boundary_sv]
             self.boundary_sv_index = np.arange(len(alpha))[boundary_sv]
     
-            print("%d support vectors out of %d points" % (len(self.alpha), n_samples))
-    
             # CENTER is zero
             self.center = 0.0
             
@@ -147,7 +177,9 @@ class SVDD(object):
             b = self.boundary_sv[0]
             # remind: the radius is squared!!
             self.radius = self.kernel(b, b)
-            print(f'Solution found with center in {self.center} and radius {np.sqrt(self.radius)}')
+            if self.verbose:
+                print("%d support vectors out of %d points" % (len(self.alpha), n_samples))
+                print(f'Solution found with center in {self.center} and radius {np.sqrt(self.radius)}')
         
     def decision_function(self, X):
         '''
@@ -177,25 +209,25 @@ class SVDD(object):
 
 
 
-########## TEST FUNCTIONS
+# ########## TEST FUNCTIONS
 
-def compute_radius(b, alpha, sv, kernel=linear_kernel):
-    '''RADIUS (squared)
-        b: boundary support vector
-        # take any of the boundary observations
-        # should be equal for each of the support vectors with 0 < alpha < C
-    '''
-    tmp1 = 0
-    tmp2 = 0
-    for i in range(len(alpha)):
-        tmp1 += alpha[i] * kernel(sv[i],b)
-        for j in range(len(alpha)):
-            tmp2 += alpha[i] * alpha[j] * kernel(sv[i],sv[j])
-    print('kernel b', kernel(b, b))
-    print('tmp1', tmp1)
-    print('tmp2', tmp2)
-    radius = kernel(b, b) - 2*tmp1 + tmp2
-    return radius
+# def compute_radius(b, alpha, sv, kernel=linear_kernel):
+#     '''RADIUS (squared)
+#         b: boundary support vector
+#         # take any of the boundary observations
+#         # should be equal for each of the support vectors with 0 < alpha < C
+#     '''
+#     tmp1 = 0
+#     tmp2 = 0
+#     for i in range(len(alpha)):
+#         tmp1 += alpha[i] * kernel(sv[i],b)
+#         for j in range(len(alpha)):
+#             tmp2 += alpha[i] * alpha[j] * kernel(sv[i],sv[j])
+#     print('kernel b', kernel(b, b))
+#     print('tmp1', tmp1)
+#     print('tmp2', tmp2)
+#     radius = kernel(b, b) - 2*tmp1 + tmp2
+#     return radius
 
 # b = np.array([[1,2,3], [1,2,3]])
 

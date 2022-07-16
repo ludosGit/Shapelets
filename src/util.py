@@ -1,8 +1,11 @@
 import numpy as np
 import scipy
 import tslearn
+import random
+
 from tslearn import preprocessing
 from tslearn.datasets import CachedDatasets
+from tslearn.clustering import TimeSeriesKMeans
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import matplotlib.pyplot as plt
@@ -29,6 +32,12 @@ def normalize_1d(x):
 def normalize_2d(x):
     return (x - np.mean(x, axis=0, keepdims=True)) / np.std(x, axis=0, keepdims=True)
 
+def mean_shift(x):
+    return (x - np.mean(x, axis=0, keepdims=True))
+
+def euclidean_distance_shifted(s1, s2):
+    return euclidean_distance(mean_shift(s1), mean_shift(s2))
+    
 # ### TEST
 # x = np.array([[1,2,3], [4,5,6]]).transpose(1,0)
 # normalize_2d(x)
@@ -46,7 +55,7 @@ def length_normalized_distance(t1, t2):
     '''
     # this works also with multivariate shapelets
     # return np.sqrt(1/len(t1) * np.square(euclidean_distance((t1 - np.mean(t1, axis=0, keepdims=True)),(t2 - np.mean(t2, axis=0, keepdims=True)) )))
-    return 1/len(t1) * euclidean_distance(normalize_2d(t1), normalize_2d(t2))
+    return 1/len(t1) * np.square(euclidean_distance(mean_shift(t1), mean_shift(t2)))
 
 
 # ### TEST
@@ -178,7 +187,7 @@ def xcorr(x, y, scale='biased'):
 
 def max_corr(x, y, scale='biased'):
     '''
-    @param x,y: numpy arrays shape (n_observations, n_channels)
+    @param x,y: numpy arrays shape (n_observations, n_channels) which represent multivariate time series
     return: average of the max cross correlations of x and y channelwise
     '''
     n_channels = x.shape[1]
@@ -200,12 +209,6 @@ def max_corr(x, y, scale='biased'):
 # z = np.correlate(normalize_1d(x[:,1]), normalize_1d(y[:,1]), mode='full')
 # z = z / 5
 # max(z)
-
-
-max_corr(x,y)
-
-
-
 
 
 ################ DATA NORMALIZATION auxiliary class #############
@@ -254,6 +257,34 @@ class Scaler():
 # x = x.reshape((-1,2))
 # scaler = MinMaxScaler()
 # x = scaler.fit_transform(x)
+
+################### KMEANS AUXILIARY FUNCTIONS ####################
+
+def sample_ts_segments(X, shapelets_size, n_segments=10000):
+    """
+    Sample time series segments for k-Means.
+    @param X: time series dataset array shape 
+    """
+    n_ts, len_ts, n_channels = X.shape
+    # Return a k sized list of elements chosen from the population with replacement
+    samples_i = random.choices(range(n_ts), k=n_segments) 
+    segments = np.empty((n_segments, shapelets_size, n_channels))
+    for i, k in enumerate(samples_i):
+        # take a random index s from start to stop both included!
+        s = random.randint(0, len_ts - shapelets_size)
+        segments[i] = X[k, s:s+shapelets_size, :]
+    return segments
+
+def get_weights_via_kmeans(X, len_shapelets, num_shapelets, n_segments=10000):
+    """
+    Get weights via k-Means for a block of shapelets.
+    @return: clusters array shape (num_shapelets, len_shapelets, in_channels)
+    """
+    segments = sample_ts_segments(X, len_shapelets, n_segments)
+    k_means = TimeSeriesKMeans(n_clusters=num_shapelets, metric="euclidean", max_iter=50).fit(segments)
+    clusters = k_means.cluster_centers_
+    return clusters
+
 
 
 ################### PERMISSIBLE ERRORS IMPLEMENTATION ####################
