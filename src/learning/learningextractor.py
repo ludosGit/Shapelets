@@ -50,6 +50,7 @@ class LearningShapelets():
         self.loss_func = SVDD_L2DistanceLoss(radius=radius)
         self.verbose = verbose
         self.optimizer = None
+        self.scheduler = None
         self.C = C
 
         # TODO: add shapelet similarity loss
@@ -64,6 +65,18 @@ class LearningShapelets():
         @rtype: None
         """
         self.optimizer = optimizer
+        return None
+
+    def set_scheduler(self, scheduler):
+        """
+        Set an optimizer for training.
+        @param optimizer: a PyTorch optimizer: https://pytorch.org/docs/stable/optim.html
+        @type optimizer: torch.optim
+        @return:
+        @rtype: None
+        """
+        self.scheduler = scheduler
+        return None
 
     def set_shapelet_weights(self, weights):
         """
@@ -88,6 +101,7 @@ class LearningShapelets():
         @return: the loss for the batch
         @rtype: float
         """
+        # forward pass
         x_transformed = self.model(x)
         loss = self.loss_func(x_transformed)
         loss.backward()
@@ -103,7 +117,7 @@ class LearningShapelets():
         self.loss_func.update_r(svdd.radius)
         return None
 
-    def fit(self, X, Y=None, epochs=1, batch_size=256, shuffle=False, drop_last=False):
+    def fit(self, X, epochs=1, batch_size=256, shuffle=False, drop_last=False):
         """
         Train the model.
         @param X: the time series data set
@@ -134,7 +148,6 @@ class LearningShapelets():
         #     Y = tensor(Y, dtype=torch.long).contiguous()
         if self.to_cuda:
             X = X.cuda()
-        #   Y = Y.cuda()
 
         train_ds = TensorDataset(X)
         train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
@@ -150,13 +163,14 @@ class LearningShapelets():
         # current_loss_sim = 0
         # print('shape of X before starting', X.shape)
         for _ in progress_bar: # for each epoch
-            self.compute_radius(X)
             for j, x in enumerate(train_dl):
                 x = x[0] # items in dataloader are lists because a label is supposed
-                # print('shape of the batches', x.shape)
                 current_loss_dist = self.update(x)
                 losses_dist.append(current_loss_dist)
             progress_bar.set_description(f"Loss: {current_loss_dist}")
+            
+        if self.scheduler is not None:
+            self.scheduler.step()
         return losses_dist
 
     def transform(self, X):

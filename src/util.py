@@ -37,6 +37,12 @@ def mean_shift(x):
 
 def euclidean_distance_shifted(s1, s2):
     return euclidean_distance(mean_shift(s1), mean_shift(s2))
+
+# # NOTE: numpy std function computes the biased standard deviation
+# x = np.array([1,2,3,4,5])
+# np.std(x)
+# mean = np.sum(x)/5
+# np.sqrt(np.sum(np.square(x - mean))/5)
     
 # ### TEST
 # x = np.array([[1,2,3], [4,5,6]]).transpose(1,0)

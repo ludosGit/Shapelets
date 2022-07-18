@@ -136,6 +136,10 @@ class Bruteforce_extractor_mv():
         positions = positions[indexes]
         scores = scores[indexes]
 
+        # update the sorted candidates
+        candidates_sorted = Candidateset(sequences, positions, scores)
+        self.candidates = candidates_sorted
+
         # copy of sequences: you must keep sequences in order to compute distance threshold
         sequences_copy = sequences
 
@@ -152,17 +156,18 @@ class Bruteforce_extractor_mv():
 
         if pos_boundary is not None:
             print(f'Candidates are being filtered by a position threshold of {pos_boundary} time steps')
-        elif corr_threshold is not None:
-            print(f'Candidates are being filtered by a correlation threshold of {corr_threshold}')
-        
-        while len(seq_final) != K:
-            s1 = sequences_copy[0]
-            pos1 = positions[0]
-            score1 = scores[0]
-            similarity_boundary = self.compute_boundary(s1, sequences)
 
-            # CASE a position boundary is set
-            if pos_boundary is not None:
+            indexes = (abs(positions - positions[0]) < pos_boundary)
+            sequences_copy = np.delete(sequences_copy, indexes, axis=0)
+            positions = np.delete(positions, indexes, axis=0)
+            scores = np.delete(scores, indexes, axis=0)
+
+            while len(seq_final) != K:
+
+                s1 = sequences_copy[0]
+                pos1 = positions[0]
+                score1 = scores[0]
+                similarity_boundary = self.compute_boundary(s1, sequences)
                 if self.test_position(s1, pos1, seq_final, positions_final, similarity_boundary, pos_boundary):
                     sequences_copy = np.delete(sequences_copy, 0, axis=0)
                     positions = np.delete(positions, 0, axis=0)
@@ -170,9 +175,30 @@ class Bruteforce_extractor_mv():
                     if len(sequences_copy)==0:
                         break
                     continue
-            
-            # CASE a correlation boundary is set
-            elif corr_threshold is not None:
+
+                # add the candidate to be a shapelet
+                seq_final.append(s1)
+                positions_final.append(pos1)
+                scores_final.append(score1)
+
+                # delete all the positions too near
+                indexes = (abs(positions - pos1) < pos_boundary)
+                sequences_copy = np.delete(sequences_copy, indexes, axis=0)
+                positions = np.delete(positions, indexes, axis=0)
+                scores = np.delete(scores, indexes, axis=0) 
+    
+                if len(sequences_copy)==0:
+                    break 
+
+        elif corr_threshold is not None:
+            print(f'Candidates are being filtered by a correlation threshold of {corr_threshold}')
+        
+            while len(seq_final) != K:
+                s1 = sequences_copy[0]
+                pos1 = positions[0]
+                score1 = scores[0]
+                similarity_boundary = self.compute_boundary(s1, sequences)
+    
                 if self.test_corr(s1, seq_final, similarity_boundary, corr_threshold):
                     sequences_copy = np.delete(sequences_copy, 0, axis=0)
                     positions = np.delete(positions, 0, axis=0)
@@ -180,18 +206,18 @@ class Bruteforce_extractor_mv():
                     if len(sequences_copy)==0:
                         break
                     continue
-
-            # add the candidate to be a shapelet
-            seq_final.append(s1)
-            positions_final.append(pos1)
-            scores_final.append(score1)
-
-            sequences_copy = np.delete(sequences_copy, 0, axis=0)
-            positions = np.delete(positions, 0, axis=0)
-            scores = np.delete(scores, 0, axis=0)  
-
-            if len(sequences_copy)==0:
-                break 
+    
+                # add the candidate to be a shapelet
+                seq_final.append(s1)
+                positions_final.append(pos1)
+                scores_final.append(score1)
+    
+                sequences_copy = np.delete(sequences_copy, 0, axis=0)
+                positions = np.delete(positions, 0, axis=0)
+                scores = np.delete(scores, 0, axis=0)  
+    
+                if len(sequences_copy)==0:
+                    break 
 
         shapelets = Candidateset(seq_final, positions_final, scores_final)
         return shapelets

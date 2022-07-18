@@ -401,11 +401,10 @@ class RLS_extractor():
         lengths = np.delete(lengths, 0, axis=0)
         scores = np.delete(scores, 0, axis=0)
 
-        k = 0
-
         if pos_boundary is not None:
             print(f'Candidates are being filtered by a position threshold of {pos_boundary} time steps')
-        elif corr_threshold is not None:
+
+        elif (corr_threshold is not None):
             print(f'Candidates are being filtered by a correlation threshold of {corr_threshold}')
         
         # start the candidates' selection

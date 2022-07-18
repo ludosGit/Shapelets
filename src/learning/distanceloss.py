@@ -69,6 +69,10 @@ class SVDD_L2DistanceLoss(nn.Module):
 
     def update_r(self, radius):
         self.radius = radius
+        return None
+
+    def get_radius(self):
+        return np.sqrt(self.radius)
 
     def forward(self, x):
         """
@@ -85,7 +89,7 @@ class SVDD_L2DistanceLoss(nn.Module):
         l2 = l1 - self.radius
 
         l2[l2 < 0] = 0 
-        l2 = torch.sum(l2) / torch.count_nonzero(l2)
+        l2 = torch.mean(l2)
         loss = l2 + torch.mean(l1)
         return loss
 
