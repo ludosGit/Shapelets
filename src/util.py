@@ -157,6 +157,9 @@ def sdist_mv(S, T):
 ############### CROSS CORRELATION 
 
 def xcorr(x, y, scale='biased'):
+    '''
+    Only one dimensional signals
+    '''
     # Pad shorter array if signals are different lengths
     if x.size > y.size:
         pad_amount = x.size - y.size

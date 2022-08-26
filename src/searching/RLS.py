@@ -23,8 +23,8 @@ class RLS_candidateset():
         positions: numpy array of their starting positions
         lenghts: numpy array of their lengths
         scores: numpy array of their scores (possibly empty)
+        NOTE: sequences, positons and lengths must have the same lengths
         '''
-        assert (sequences==None or len(sequences) ==  len(positions) == len(lengths)), "Error: the information don't match"
         self.sequences = sequences
         self.positions = np.array(positions, dtype='int')
         self.lengths = np.array(lengths, dtype='int')
@@ -127,20 +127,19 @@ class RLS_candidateset():
         self.scores = np.append(self.scores, N.scores)
         return self
 
-    #### I don't think I used it
-    def random_select(self, beta):
+# tested ok
+    def random_sample(self, sample_size=3000):
         '''
-        Select random sequences according to the proportion beta
-        :alpha: proportion w.r.t. total number of candidates in the set
+        Select random sequences according to the proportion prop
+        :return: new RLS_candidateset
         '''
         N = len(self)
-        sample_size = round(N*beta)
         random_sample = random.choice(range(N), size=sample_size, replace=False)
         random_sequences = [self.sequences[i] for i in random_sample]
-        self.sequences = random_sequences
-        self.positions = self.positions[random_sample]
-        self.lenghts = self.lengths[random_sample]
-        return None
+        positions = self.positions[random_sample]
+        lengths = self.lengths[random_sample]
+        R = RLS_candidateset(random_sequences, positions, lengths)
+        return R
 
 
 
@@ -198,6 +197,7 @@ class RLS_extractor():
         self.test_data = test_data
         self.candidates_notscored = None
         self.candidates_scored = None
+        self.total_candidates = None
         self.shapelets = None
         self.L_min = None
         self.L_max = None
@@ -260,9 +260,11 @@ class RLS_extractor():
         # r_length number of random candidates for each length
         # extract r candidates subsequences equally divided in number w.r.t lengths
 
+        total_candidates = RLS_candidateset()
         for L in range(L_min, L_max+1, step):
             # get all candidates of length L
             candidates = self.get_candidates(L)
+            total_candidates.merge(candidates)
 
             # take random candidates per length and append everything to the random vectors
             N_candidates = len(candidates.sequences)
@@ -285,6 +287,7 @@ class RLS_extractor():
         # update candidates info
         self.candidates_notscored = candidates_notscored
         self.candidates_scored = random_candidates
+        self.total_candidates = total_candidates
         print('the length of the total random sample should be equal to r', len(random_candidates))
         return candidates_notscored, random_candidates
         
@@ -303,37 +306,44 @@ class RLS_extractor():
             for index in range(N):
                 # sum all the sdists from every time series
                 sum += util.sdist_mv(S, X[index,: ,:])
-            scores[i] = sum / N
+            scores[i] = sum 
         candidates.scores = scores     
         return candidates
 
-    def compute_boundary(self, s1, sequences, distance):
+
+    def compute_boundary(self, s1, sequences, distance=euclidean_distance):
+        '''
+        :s1: candidate sequence
+        :sequences: list of numpy arrays
+        :return: boundary for distances of s1 w.r.t. all the sequences
+        '''
         similarity_distances = []
             # iterate over all the candidates:
         for p in range(len(sequences)):
             s2 = sequences[p]
-            d = distance(s1, s2)
+            d = distance(mean_shift(s1), mean_shift(s2))
             # p is the index of the subsequence and d its distance to the last discovered shapelet
             similarity_distances.append(d)
         similarity_distances = np.array(similarity_distances)
         similarity_boundary = 0.1 * np.median(similarity_distances)
         return similarity_boundary
 
-    def test_position(self, s1, pos1, best_subsequences, best_positions, similarity_boundary, pos_boundary, distance):
+
+    def test_position(self, s1, pos1, best_subsequences, best_positions, similarity_boundary, pos_boundary, distance=euclidean_distance):
         '''
-        test if a candidate is suitable to be added to seq_final, list that contains the shapelets discovered so far
-        @param seq_final: list of numpy arrays
-        @param positions_final: list of integers with same length
+        test if a candidate is suitable to be added to best_subsequences, list that contains the shapelets discovered so far
+        @param best_subsequences: list of numpy arrays
+        @param best_positions: list of integers with same length 
         '''
         for i in range(len(best_subsequences)):
             s2 = best_subsequences[i]
             pos2 = best_positions[i]
-            dist = distance(s1, s2)
-            if (abs(pos1 - pos2) < pos_boundary) or (dist < similarity_boundary):
+            dist = distance(mean_shift(s1), mean_shift(s2))
+            if ((abs(pos1 - pos2) < pos_boundary) or (dist < similarity_boundary)):
                 return True
         return False
 
-    def test_corr(self, s1, best_subsequences, similarity_boundary, corr_threshold):
+    def test_corr(self, s1, best_subsequences, similarity_boundary, corr_threshold, distance=euclidean_distance):
         '''
         @param s1: shapelet candidate
         @param seq_final: list  of shapelets
@@ -342,12 +352,12 @@ class RLS_extractor():
         '''
         for s2 in best_subsequences:
             corr = max_corr(s2, s1, scale='biased')
-            dist = euclidean_distance(mean_shift(s1), mean_shift(s2))
+            dist = distance(mean_shift(s1), mean_shift(s2))
             if ((corr >= corr_threshold) or (dist < similarity_boundary)):
                 return True
         return False
     
-    def get_top_candidates(self, candidates, m, pos_boundary=None, corr_threshold=None, reverse=False):
+    def get_top_candidates(self, candidates, m, pos_boundary=0, corr_threshold=None, reverse=False, sample_size=3000):
         '''
         Extract best m best candidates in a RLS_candidateset object with computed scores.
         They must satisfy (for each i,j selected as best candidates) :
@@ -371,7 +381,8 @@ class RLS_extractor():
         
         # Set distance measure to evaluate similarity between candidates:
         if self.L_min == self.L_max:
-            distance = euclidean_distance_shifted
+            print('Candidates have same length')
+            distance = euclidean_distance
 
         # if candidates have different lengths, I cannot use euclidean_distance
         else:
@@ -407,20 +418,21 @@ class RLS_extractor():
         elif (corr_threshold is not None):
             print(f'Candidates are being filtered by a correlation threshold of {corr_threshold}')
         
+        sample_sequences_for_distance = self.total_candidates.random_sample(sample_size).sequences
+
         # start the candidates' selection
         while len(best_subsequences) != m:
-
             s1 = subsequences[0]
             pos1 = positions[0]
             score1 = scores[0]
             len1 = lengths[0]
             # calculate similarity boundary wrt all the sequences already scored
             # this prevents to have extreme cases
-            similarity_boundary = self.compute_boundary(s1, self.candidates_scored.sequences, distance)
+            similarity_boundary = self.compute_boundary(s1, sample_sequences_for_distance, distance)
 
             if pos_boundary is not None:
-                if self.test_position(s1, pos1, best_subsequences, best_positions, \
-                    similarity_boundary, pos_boundary, distance):
+                if self.test_position(s1, pos1, best_subsequences, best_positions, similarity_boundary, pos_boundary, distance):
+                    print('Distance violated')
                     del subsequences[0]
                     positions = np.delete(positions, 0, axis=0)
                     lengths = np.delete(lengths, 0, axis=0)
@@ -431,7 +443,7 @@ class RLS_extractor():
                     continue
 
             if corr_threshold is not None:
-                if self.test_corr(s1, best_subsequences, similarity_boundary, corr_threshold):
+                if self.test_corr(s1, best_subsequences, similarity_boundary, corr_threshold, distance):
                     del subsequences[0]
                     positions = np.delete(positions, 0, axis=0)
                     lengths = np.delete(lengths, 0, axis=0)
@@ -440,6 +452,8 @@ class RLS_extractor():
                     if len(subsequences)==0:
                         break
                     continue
+
+            print('Conditions are okkkkk')
 
             best_subsequences.append(s1)
             best_positions.append(pos1)
@@ -533,7 +547,7 @@ class RLS_extractor():
             return best_candidates  
         
 
-    def extract(self, r, m, L_min, step=1, n_steps=0, pos_boundary=0, epsilon=(1,1), beta=0, reverse=False, K_star = 0.02, maxiter=5):
+    def extract(self, r, m, L_min, step=1, n_steps=0, pos_boundary=0, corr_threshold=None, epsilon=(1,1), beta=0, reverse=False, K_star = 0.02, maxiter=5, sample_size=3000):
         '''
         Extract the shapelets following RLS approach
         Update self.shapelets
@@ -561,12 +575,12 @@ class RLS_extractor():
         print('Finished to get random candidates')
         print('Calculating scores')
         self.compute_scores(random_candidates)
-        best_candidates = self.get_top_candidates(random_candidates, m, pos_boundary, reverse)
+        best_candidates = self.get_top_candidates(random_candidates, m, pos_boundary, corr_threshold, reverse, sample_size)
         print(f'Finished to get top {m} candidates')
         print('Starting the local search')
         best_candidates = self.LocalSearch(best_candidates, epsilon, step, beta, reverse, maxiter)
         print('Finished local search')
-        shapelets = self.get_top_candidates(best_candidates, K, pos_boundary, reverse)
+        shapelets = self.get_top_candidates(best_candidates, K, pos_boundary, corr_threshold, reverse, sample_size)
         print(f'Finished to get top {K} candidates')
         self.shapelets = shapelets
         print('Time for shapelets extraction:')

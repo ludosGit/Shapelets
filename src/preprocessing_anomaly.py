@@ -1,6 +1,6 @@
 import numpy as np
 
-def preprocessing_anomaly(X_train, y_train, X_test, y_test, alpha, normal_class, normal_prop=0.8, valid_prop = 0):
+def preprocessing_anomaly(X_train, y_train, X_test=None, y_test=None, alpha=0.1, normal_class=1, normal_prop=0.8, valid_prop = 0):
     '''
     Transform the dataset in a new one for anomaly detection according to Beggel's paper
     @param alpha: parameter to control the proportion of normal - anomalies
@@ -8,9 +8,12 @@ def preprocessing_anomaly(X_train, y_train, X_test, y_test, alpha, normal_class,
     @param normal_prop: indicates the proportion of normal instances in training set w.r.t. the total number
                         default is 0.8 that means 80% of normal series go into training set (as in Beggel's paper)
     '''
-
-    X_total = np.concatenate((X_train, X_test), axis=0)
-    y_total = np.concatenate((y_train, y_test), axis=0)
+    if isinstance(X_test, type(None)):
+        X_total = X_train
+        y_total = y_train
+    else:
+        X_total = np.concatenate((X_train, X_test), axis=0)
+        y_total = np.concatenate((y_train, y_test), axis=0)
     N, M, _ = X_total.shape
 
     # select the normal class time series

@@ -110,7 +110,6 @@ class LearningShapelets():
         return loss.item()
 
     def compute_radius(self, X, tol=1e-7):
-
         X = self.transform(X) # numpy array shape (n_samples, n_shapelets)
         svdd = SVDD.SVDD(C=self.C, zero_center=True, verbose=False, tol=tol)
         svdd.fit(X)

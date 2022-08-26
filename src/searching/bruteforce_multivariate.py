@@ -24,6 +24,18 @@ class Candidateset():
         self.positions = np.array(positions, dtype='int')
         self.scores = np.array(scores)
 
+    def random_sample(self, sample_size=3000):
+        '''
+        Select random sequences according to the proportion prop
+        :return: new RLS_candidateset
+        '''
+        N = len(self.sequences)
+        random_sample = random.choice(range(N), size=sample_size, replace=False)
+        random_sequences = self.sequences[random_sample]
+        positions = self.positions[random_sample]
+        R = Candidateset(random_sequences, positions)
+        return R
+
 class Bruteforce_extractor_mv():
     '''
     Class to extract the best shapelets from multivariate train_data
@@ -65,7 +77,7 @@ class Bruteforce_extractor_mv():
                 sequences.append(S)
                 positions.append(j)
                 # take the mean
-                scores.append(sum / N)
+                scores.append(sum)
         sequences = np.array(sequences)
         positions = np.array(positions, dtype='int')
         scores = np.array(scores)
@@ -74,6 +86,9 @@ class Bruteforce_extractor_mv():
         return candidates
 
     def compute_boundary(self, s1, sequences):
+        '''
+        method to compute distance boundary of s1 wrt sequences
+        '''
         similarity_distances = []
             # iterate over all the candidates:
         for p in range(len(sequences)):
@@ -82,7 +97,7 @@ class Bruteforce_extractor_mv():
             # p is the index of the subsequence and d its distance to the last discovered shapelet
             similarity_distances.append(d)
         similarity_distances = np.array(similarity_distances)
-        similarity_boundary = 0.1 * np.median(similarity_distances)
+        similarity_boundary = 0.01 * np.median(similarity_distances)
         return similarity_boundary
 
     def test_position(self, s1, pos1, seq_final, positions_final, similarity_boundary, pos_boundary):
@@ -115,7 +130,7 @@ class Bruteforce_extractor_mv():
         return False
 
 
-    def get_top_candidates(self, K, pos_boundary=None, corr_threshold=None, reverse=False):
+    def get_top_candidates(self, K, pos_boundary=None, corr_threshold=None, reverse=False, sample_size=3000):
         '''
         Extract best K shapelets from self.candidates according to score in normal or reverse order
         with constraint distance(S_i, S-j) < threshold and |pos_i - pos_j| < pos_boundary
@@ -124,24 +139,29 @@ class Bruteforce_extractor_mv():
         candidates = self.candidates
         scores = candidates.scores
         assert scores is not None, 'Scores must be calculated'
-
-        sequences = candidates.sequences # numpy array
+        if pos_boundary is not None:
+            print(f'Candidates are being filtered by a position threshold of {pos_boundary} time steps')
+        if corr_threshold is not None:
+            print(f'Candidates are being filtered by a correlation threshold of {corr_threshold}')
+            
+        # named copy for mistake
+        sequences_copy = candidates.sequences # numpy array
         positions = candidates.positions
+
+        # sample sequences to compute the boundary
+        sequences_sample = candidates.random_sample(sample_size).sequences
 
         indexes = scores.argsort()
         if reverse:
             indexes = indexes[::-1]
         
-        sequences = sequences[indexes]
+        sequences_copy = sequences_copy[indexes]
         positions = positions[indexes]
         scores = scores[indexes]
 
         # update the sorted candidates
-        candidates_sorted = Candidateset(sequences, positions, scores)
+        candidates_sorted = Candidateset(sequences_copy, positions, scores)
         self.candidates = candidates_sorted
-
-        # copy of sequences: you must keep sequences in order to compute distance threshold
-        sequences_copy = sequences
 
         # take best scoring shapelet
 
@@ -154,20 +174,14 @@ class Bruteforce_extractor_mv():
         positions = np.delete(positions, 0, axis=0)
         scores = np.delete(scores, 0, axis=0)
 
-        if pos_boundary is not None:
-            print(f'Candidates are being filtered by a position threshold of {pos_boundary} time steps')
-
-            indexes = (abs(positions - positions[0]) < pos_boundary)
-            sequences_copy = np.delete(sequences_copy, indexes, axis=0)
-            positions = np.delete(positions, indexes, axis=0)
-            scores = np.delete(scores, indexes, axis=0)
-
-            while len(seq_final) != K:
-
-                s1 = sequences_copy[0]
-                pos1 = positions[0]
-                score1 = scores[0]
-                similarity_boundary = self.compute_boundary(s1, sequences)
+        while len(seq_final) != K:
+            s1 = sequences_copy[0]
+            pos1 = positions[0]
+            score1 = scores[0]
+            similarity_boundary = self.compute_boundary(s1, sequences_sample)
+            
+            if pos_boundary is not None:
+                # the test is actually only on the distance
                 if self.test_position(s1, pos1, seq_final, positions_final, similarity_boundary, pos_boundary):
                     sequences_copy = np.delete(sequences_copy, 0, axis=0)
                     positions = np.delete(positions, 0, axis=0)
@@ -175,30 +189,8 @@ class Bruteforce_extractor_mv():
                     if len(sequences_copy)==0:
                         break
                     continue
-
-                # add the candidate to be a shapelet
-                seq_final.append(s1)
-                positions_final.append(pos1)
-                scores_final.append(score1)
-
-                # delete all the positions too near
-                indexes = (abs(positions - pos1) < pos_boundary)
-                sequences_copy = np.delete(sequences_copy, indexes, axis=0)
-                positions = np.delete(positions, indexes, axis=0)
-                scores = np.delete(scores, indexes, axis=0) 
-    
-                if len(sequences_copy)==0:
-                    break 
-
-        elif corr_threshold is not None:
-            print(f'Candidates are being filtered by a correlation threshold of {corr_threshold}')
-        
-            while len(seq_final) != K:
-                s1 = sequences_copy[0]
-                pos1 = positions[0]
-                score1 = scores[0]
-                similarity_boundary = self.compute_boundary(s1, sequences)
-    
+            
+            if corr_threshold is not None:
                 if self.test_corr(s1, seq_final, similarity_boundary, corr_threshold):
                     sequences_copy = np.delete(sequences_copy, 0, axis=0)
                     positions = np.delete(positions, 0, axis=0)
@@ -206,23 +198,23 @@ class Bruteforce_extractor_mv():
                     if len(sequences_copy)==0:
                         break
                     continue
-    
-                # add the candidate to be a shapelet
-                seq_final.append(s1)
-                positions_final.append(pos1)
-                scores_final.append(score1)
-    
-                sequences_copy = np.delete(sequences_copy, 0, axis=0)
-                positions = np.delete(positions, 0, axis=0)
-                scores = np.delete(scores, 0, axis=0)  
-    
-                if len(sequences_copy)==0:
-                    break 
+
+            # add the candidate to be a shapelet
+            seq_final.append(s1)
+            positions_final.append(pos1)
+            scores_final.append(score1)
+
+            sequences_copy = np.delete(sequences_copy, 0, axis=0)
+            positions = np.delete(positions, 0, axis=0)
+            scores = np.delete(scores, 0, axis=0) 
+
+            if len(sequences_copy)==0:
+                break
 
         shapelets = Candidateset(seq_final, positions_final, scores_final)
         return shapelets
 
-    def extract_shapelets(self, K_star=0.1, L_star=0.3, pos_boundary=None, corr_threshold=None, reverse=False):
+    def extract_shapelets(self, K_star=0.1, L_star=0.3, pos_boundary=None, corr_threshold=None, reverse=False, sample_size=3000):
         '''
         Extract best shapelets from train_data
         :param X: ndarray of shape (N, Q, 1) with N time series all of the same length Q (can be modified for different lenghts)
@@ -237,13 +229,13 @@ class Bruteforce_extractor_mv():
         N, Q = X.shape[0:2]
         L = round(L_star * Q)
         K = round(K_star * Q)
-        print(f'Are going to be extracted {K:.3f} shapelets of length {L:.4f}')
+        print(f'Are going to be extracted {K} shapelets of length {L}')
 
         if reverse == True :
             print('Shapelets are going to be extracted in reverse order!')
 
         self.extract_candidates(L_star)
-        shapelets = self.get_top_candidates(K, pos_boundary, corr_threshold, reverse)
+        shapelets = self.get_top_candidates(K, pos_boundary, corr_threshold, reverse, sample_size)
         self.shapelets = shapelets
         print('Time for shapelets extraction:')
         print("--- %s seconds ---" % (time.time() - start_time))
