@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from src.learning.distancelayer import DistanceLayer
 from src.learning.distanceloss import L2DistanceLoss, SVDD_L2DistanceLoss
+from src.learning.similarityloss import ShapeletsSimilarityLoss
 from src.SVDD import SVDD
 
 ################### CLASS for a shapelet - learning extractor 
@@ -35,7 +36,7 @@ class LearningShapelets():
     """
 
     def __init__(self, len_shapelets, num_shapelets, in_channels=1, \
-        radius=0, C=1, verbose=0, to_cuda=True):
+        radius=0, C=1, verbose=0, to_cuda=True, l1=0):
         '''
         @param radius: initial radius of SVDD boundary
         '''
@@ -52,6 +53,9 @@ class LearningShapelets():
         self.optimizer = None
         self.scheduler = None
         self.C = C
+        self.l1 = l1
+        if self.l1 > 0.0:
+            self.loss_sim = ShapeletsSimilarityLoss()
 
         # TODO: add shapelet similarity loss
         # self.loss_sim_block = ShapeletsSimilarityLoss()
@@ -103,11 +107,20 @@ class LearningShapelets():
         """
         # forward pass
         x_transformed = self.model(x)
-        loss = self.loss_func(x_transformed)
-        loss.backward()
+        loss_dist = self.loss_func(x_transformed)
+        loss_dist.backward(retain_graph=True)
+        s = self.model.get_shapelets()
+        if self.l1 > 0.0:
+            # get shapelet similarity loss and compute gradients
+            loss_sim = self.loss_sim(s) * self.l1
+            loss_sim.backward(retain_graph=True)
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+            return loss_dist.item(), loss_sim.item()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        return loss.item()
+        return loss_dist.item()
+
 
     def compute_radius(self, X, tol=1e-7):
         X = self.transform(X) # numpy array shape (n_samples, n_shapelets)
@@ -156,7 +169,7 @@ class LearningShapelets():
 
         # create a list of the losses for each batch
         losses_dist = []
-        # losses_sim = []
+        losses_sim = []
         progress_bar = tqdm(range(epochs), disable=False if self.verbose > 0 else True)
         current_loss_dist = 0
         # current_loss_sim = 0
@@ -164,13 +177,14 @@ class LearningShapelets():
         for _ in progress_bar: # for each epoch
             for j, x in enumerate(train_dl):
                 x = x[0] # items in dataloader are lists because a label is supposed
-                current_loss_dist = self.update(x)
+                current_loss_dist, current_loss_sim = self.update(x)
                 losses_dist.append(current_loss_dist)
-            progress_bar.set_description(f"Loss: {current_loss_dist}")
+                losses_sim.append(current_loss_sim)
+            progress_bar.set_description(f"Loss dist: {current_loss_dist}")
             
         if self.scheduler is not None:
             self.scheduler.step()
-        return losses_dist
+        return losses_dist, losses_sim 
 
     def transform(self, X):
         """

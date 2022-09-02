@@ -71,16 +71,6 @@ print('number of normal test series:', len(y_test_anomaly[y_test_anomaly==1]))
 print('number of anomalous test series:', len(y_test_anomaly[y_test_anomaly==-1]))
 
 
-# plt.figure(1, figsize=(10, 5))
-# for ts in X_train_anomaly[y_train_anomaly==1][:,:,0]:
-#     plt.plot(range(len(ts)), ts, c='tab:blue')
-# for ts in X_train_anomaly[y_train_anomaly==-1][:,:,0]:
-#     plt.plot(range(len(ts)), ts, c='tab:orange')
-# plt.title('The time series in the train set', fontweight="bold")
-# plt.savefig('ecg_train')
-indices = [366, 426]
-X_train_anomaly = np.delete(X_train_anomaly, indices)
-
 K_star = 6/Q
 L_star = 0.3
 L = round(L_star*Q)
@@ -99,7 +89,7 @@ for i in range(len(S_init)):
     shap = S_init[i,:,]
     plt.plot(shap, label=f'shapelet{i+1}')
 plt.legend()
-plt.title('Random initial shapelets', fontweight="bold")
+plt.title('Ecg clusters centers', fontweight="bold")
 plt.savefig('ecg_cluster_centers')
 
 clusters_centers = torch.tensor(clusters_centers.transpose(0,2,1))
@@ -112,13 +102,14 @@ S_init[0]
 #### are the same!!!!!!!
 
 print(f'The shape of cluster centers is {clusters_centers.shape}') 
-C = 1 / (N * alpha)
+# C = 1 / (N * alpha) 
+C = 0.0025
 
 print('Cuda available?', torch.cuda.is_available())
-extractor = LearningShapelets(len_shapelets=L, num_shapelets=K, in_channels=1, C=C, verbose=1, to_cuda=True)
+extractor = LearningShapelets(len_shapelets=L, num_shapelets=K, in_channels=1, C=C, verbose=1, to_cuda=True, l1=2)
 extractor.set_shapelet_weights(clusters_centers)
 
-lr = 1e-2
+lr = 1e-1
 optimizer = torch.optim.Adagrad(extractor.model.parameters(), lr=lr)
 
 # lmbda = lambda epoch : 0.1
@@ -134,20 +125,36 @@ batch_size = N
 # Input shape must be a pytorch TENSOR with shape (n_samples, in_channels, len_ts)
 X_train_tensor = tensor(X_train_anomaly, dtype=torch.double).contiguous().transpose(1,2)
 
-extractor.compute_radius(X_train_tensor, tol=1e-9)
+extractor.compute_radius(X_train_tensor, tol=1e-8)
 
-losses = []
-for _ in range(n_epoch_steps):
-    extractor.compute_radius(X_train_tensor, tol=1e-9)
+losses_dist = []
+losses_sim = []
+for epoch in range(n_epoch_steps):
+    print(f'Epoch: {epoch}')
+    extractor.compute_radius(X_train_tensor, tol=1e-8)
     print('radius', extractor.loss_func.get_radius())
-    losses += extractor.fit(X_train_tensor, epochs=n_epochs, batch_size=batch_size)
+    current_loss_dist, current_loss_sim = extractor.fit(X_train_tensor, epochs=n_epochs, batch_size=batch_size)
+    print('Loss sim:', current_loss_sim)
+    losses_dist += current_loss_dist
+    losses_sim += current_loss_sim
+
 
 plt.figure()
-plt.plot(losses, color='blue')
+plt.plot(losses_dist, color='blue')
 plt.title("Loss over Training Steps", fontweight="bold")
 plt.xlabel("training step")
 plt.ylabel("loss")
 plt.savefig('loss_ecg')
+
+
+plt.figure()
+plt.plot(losses_sim, color='blue')
+plt.title("Loss over Training Steps", fontweight="bold")
+plt.xlabel("training step")
+plt.ylabel("loss")
+plt.savefig('loss_ecg_sim')
+
+
 
 X_train_transform = extractor.transform(X_train_tensor)
 
@@ -158,10 +165,13 @@ X_test_transform = extractor.transform(X_test_tensor)
 print('Type and shape of transformed train data', type(X_train_transform),  X_train_transform.shape)
 print('Type and shape of transformed test data', type(X_test_transform),  X_test_transform.shape)
 
-svdd = SVDD(C=C, zero_center=True, tol=1e-9)
-C = 0.001
+# C = 0.0025 # best scoring
+svdd = SVDD(C=C, zero_center=True, tol=1e-9, verbose=True, show_progress=True)
+
 # fit the model
 svdd.fit(X_train_transform)
+svdd.alpha
+svdd.radius
 # print(max(svdd.alpha))
 # svdd.boundary_sv_index
 # svdd.decision_function(X_train_transform[366].reshape(-1,6))
@@ -177,6 +187,9 @@ svdd.fit(X_train_transform)
 y_test_predict = svdd.predict(X_test_transform)
 test_ba = balanced_accuracy_score(y_test_anomaly, y_test_predict)
 print("Test balanced accuracy:", test_ba)
+# F1 score
+f1_test = f1_score(y_test_anomaly, y_test_predict, pos_label=-1)
+print("Test F1 score:", f1_test)
 
 # Confusion matrix for test 
 cm = confusion_matrix(y_test_anomaly, y_test_predict)
@@ -220,7 +233,7 @@ plt.savefig('histogram_ecg')
 y_train_scores = -svdd.decision_function(X_train_transform)
 fpr, tpr, _ = roc_curve(y_train_anomaly, y_train_scores, pos_label=-1)
 auc_train = auc(fpr, tpr)
-print("Test AUC:", auc_train)
+print("Train AUC:", auc_train)
 
 plt.figure(figsize=(8,6))
 plt.hist(y_train_scores[y_train_anomaly==1], bins=400, alpha=0.5, label="Normal", color='black')
@@ -246,4 +259,4 @@ for i in range(len(S)):
     plt.plot(shap, label=f'shapelet{i+1}')
 plt.legend()
 plt.title('The extracted shapelets', fontweight="bold")
-plt.savefig('shapelets_ecg')
+plt.savefig('shapelets_ecg_sim')

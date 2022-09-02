@@ -30,7 +30,7 @@ class gaussian_kernel():
 
 class SVDD(object):
 
-    def __init__(self, kernel='linear', C=0.9, zero_center = False, p=3, sigma=5, tol=1e-6, verbose=True):
+    def __init__(self, kernel='linear', C=0.9, zero_center = False, p=3, sigma=5, tol=1e-6, verbose=True, show_progress=False):
         '''
         Class of SVDD
         @param kernel:
@@ -57,6 +57,8 @@ class SVDD(object):
         self.gram = None
         self.radius = None
         self.center = None
+        self.alpha = None
+        self.show_progress = show_progress
         self.verbose = verbose
 
     def compute_radius(self):
@@ -66,17 +68,20 @@ class SVDD(object):
         '''
         # take one support vector on the boundary
         b = self.boundary_sv[0]
-        tmp1 = 0
-        tmp2 = 0
-        for i in range(len(self.alpha)):
-            tmp1 += self.alpha[i] * self.kernel(self.sv[i],b)
-            for j in range(len(self.alpha)):
-                tmp2 += self.alpha[i] * self.alpha[j] * self.kernel(self.sv[i],self.sv[j])
-        radius = self.kernel(b, b) - 2*tmp1 + tmp2
-        return radius
+        # OLD
+        # tmp1 = 0
+        # tmp2 = 0
+        # for i in range(len(self.alpha)):
+        #     tmp1 += self.alpha[i] * self.kernel(self.sv[i],b)
+        #     for j in range(len(self.alpha)):
+        #         tmp2 += self.alpha[i] * self.alpha[j] * self.kernel(self.sv[i],self.sv[j])
+        # radius = self.kernel(b, b) - 2*tmp1 + tmp2
+        tmp1 = self.kernel(b,self.center)
+        tmp2 = self.kernel(b, b)
+        return tmp2 - 2 * tmp1 + self.kernel(self.center, self.center)
 
     def fit(self, X):
-        cvxopt.solvers.options['show_progress'] = False
+        cvxopt.solvers.options['show_progress'] = self.show_progress
         n_samples, n_features = X.shape
 
         # Gram matrix
@@ -102,6 +107,9 @@ class SVDD(object):
             b = cvxopt.matrix(1.0)
     
             # solve QP problem
+            # minimize (1/2) x^t*P*x + q^t*x
+            # subject to Gx <= h
+            # and Ax = b
             solution = cvxopt.solvers.qp(P, q, G, h, A, b)
     
             # Lagrange multipliers
@@ -204,7 +212,7 @@ class SVDD(object):
 
     def predict(self, X):
         y = np.sign(self.decision_function(X))
-        y[y==0] = 1 # set the boundary points as anomalies
+        y[y==0] = 1 # set the boundary points as normal
         return y
 
 

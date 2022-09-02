@@ -39,7 +39,7 @@ class DistanceLayer(nn.Module):
         # otherwise gradients will not be backpropagated
         self.shapelets.retain_grad()
 
-    def forward(self, x):
+    def forward(self, x, mean_center=True):
         """
         1) Unfold the data set with sliding window 2) flatten() the patches w.r.t. the channel dimension 
         3) calculate euclidean distance and 4) perform global min-pooling
@@ -53,6 +53,11 @@ class DistanceLayer(nn.Module):
         num_samples, _, _ = x.shape
         patches = x.unfold(dimension=1, size=self.in_channels, step=1).unfold(dimension=2, size=self.len_shapelets, step=1)
         patches = patches.reshape(num_samples, -1, self.in_channels, self.len_shapelets)
+        if mean_center:
+            ####
+            # added mean shift:
+            patches = patches - torch.mean(patches, dim=3, keepdim=True)
+            ####
         patches = torch.flatten(patches, start_dim=2, end_dim=3)
         shapelets = torch.flatten(self.shapelets, start_dim=1, end_dim=2)
 
