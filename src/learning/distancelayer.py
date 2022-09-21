@@ -65,6 +65,8 @@ class DistanceLayer(nn.Module):
 
         # hard min compared to soft-min from the paper
         output_final, _ = torch.min(output, dim=2)
+        if self.num_shapelets == 1:
+            output_final = output_final.reshape((-1,1))
         return output_final
 
     def get_shapelets(self):

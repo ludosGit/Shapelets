@@ -114,19 +114,8 @@ X_test_anomaly = scaler.transform(X_test_anomaly)
 
 t = X_train_anomaly[y_train_anomaly==1][60]
 plt.figure()
-plt.plot(t[:, 0], t[:, 1], label='Learnt shapelet')
-plt.savefig('troia')
-
-
-# only first channel in case multivariate
-
-# plt.figure(1, figsize=(10, 5))
-# for ts in X_train_anomaly[y_train_anomaly==1][:,:,0]:
-#     plt.plot(range(len(ts)), ts, c='tab:blue')
-# for ts in X_train_anomaly[y_train_anomaly==-1][:,:,0]:
-#     plt.plot(range(len(ts)), ts, c='tab:orange')
-# plt.title('The time series in the train set', fontweight="bold")
-# plt.savefig('gunpoint_train')
+plt.plot(t[:, 0], t[:, 1], label='digit')
+plt.savefig('digit')
 
 
 
@@ -156,15 +145,11 @@ C = 1 / (N * alpha)
 extractor = LearningShapelets(len_shapelets=L, num_shapelets=K, in_channels=n_channels, C=C, verbose=1, to_cuda=True)
 # extractor.set_shapelet_weights(clusters_centers)
 
-lr = 1e-1
+lr = 1e-2
 optimizer = torch.optim.Adagrad(extractor.model.parameters(), lr=lr)
 
-# lmbda = lambda epoch : 0.1
-# scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
-# scheduler = ExponentialLR(optimizer, gamma=0.9)
 extractor.set_optimizer(optimizer)
-# extractor.set_scheduler(scheduler)
-n_epoch_steps = 400
+n_epoch_steps = 100
 n_epochs = 1
 # total epochs = n_epoch_steps * n_epochs
 batch_size = N

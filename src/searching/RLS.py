@@ -243,7 +243,6 @@ class RLS_extractor():
         '''
         X = self.data
         N, Q = X.shape[0:2]
-
         L_max = int(L_min + step * n_steps)
     
         self.L_min = L_min
@@ -260,11 +259,13 @@ class RLS_extractor():
         # r_length number of random candidates for each length
         # extract r candidates subsequences equally divided in number w.r.t lengths
 
-        total_candidates = RLS_candidateset()
+        self.total_candidates = RLS_candidateset()
+        self.total_candidates.sequences = []
+        print(f'Total before: {len(self.total_candidates)}')
         for L in range(L_min, L_max+1, step):
             # get all candidates of length L
             candidates = self.get_candidates(L)
-            total_candidates.merge(candidates)
+            self.total_candidates.merge(candidates)
 
             # take random candidates per length and append everything to the random vectors
             N_candidates = len(candidates.sequences)
@@ -287,7 +288,7 @@ class RLS_extractor():
         # update candidates info
         self.candidates_notscored = candidates_notscored
         self.candidates_scored = random_candidates
-        self.total_candidates = total_candidates
+        print(f'Total: {len(self.total_candidates)}')
         print('the length of the total random sample should be equal to r', len(random_candidates))
         return candidates_notscored, random_candidates
         

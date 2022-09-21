@@ -47,19 +47,9 @@ print(f'Number of total samples in each class: {obs_perclass}')
 n_class = len(obs_perclass)
 
 
-fig, ax = plt.subplots(n_class,)
-
-# NOTE: modify if the labels start from 0 or 1
-for i in range(n_class):
-    ts = X_train[y_train==i][0,:,0]
-    ax[i].set_title(f'{data_name} Class {i+1}', fontsize=10, fontweight="bold")
-    ax[i].plot(ts)
-plt.subplots_adjust(hspace=1)
-plt.savefig(f'{data_name}_classes')
 
 # Set seed for determinism
-np.random.seed(9)
-
+np.random.seed(10)
 
 # Set up anomaly detection dataset
 
@@ -82,15 +72,6 @@ scaler = TimeSeriesScalerMinMax()
 X_train_anomaly = scaler.fit_transform(X_train_anomaly)
 X_test_anomaly = scaler.transform(X_test_anomaly)
 
-# only first channel in case multivariate
-
-# plt.figure(1, figsize=(10, 5))
-# for ts in X_train_anomaly[y_train_anomaly==1][:,:,0]:
-#     plt.plot(range(len(ts)), ts, c='tab:blue')
-# for ts in X_train_anomaly[y_train_anomaly==-1][:,:,0]:
-#     plt.plot(range(len(ts)), ts, c='tab:orange')
-# plt.title('The time series in the train set', fontweight="bold")
-# plt.savefig('gunpoint_train')
 
 
 # Set up the RLS extractor and hyperparameters:
@@ -102,16 +83,11 @@ X_test_anomaly = scaler.transform(X_test_anomaly)
 # - beta: percentage of neighbors to eliminate (not compute scores) each time a neighborhood is found 
 # - maxiter: maximum number of neighborhood search for each of the m best candidates
 # - reverse: bool, whether to take the shapelets with max (True) or min score
-
-extractor = RLS_extractor(train_data=X_train_anomaly, test_data=X_test_anomaly)
-N, Q, n_channels = extractor.data.shape
 K_star = 0.02
 K = round(K_star*Q)
 
 L_star = 0.2
 L = round(L_star*Q)
-# range of lengths! 
-
 L_min = L
 step = 1
 n_steps = 0
@@ -119,81 +95,83 @@ L_max = L_min + step*n_steps
 print(L_max)
 
 r = 500
-m = K
-pos_boundary = 10
-corr_boundary = None
+m = 10
+pos_boundary = None
+corr_boundary = 0.8
 reverse = False
 epsilon = (2,1)
 beta = 0.7 # eliminate beta% of neighbors
 maxiter = 4
-
-shapelets_rls = extractor.extract(r, m, L_min, step, n_steps, pos_boundary, corr_boundary, epsilon, beta, reverse, K_star, maxiter, sample_size=r)
-S1 = shapelets_rls.sequences
-shapelets_rls.scores
-
-len(extractor.candidates_notscored)
-
-channel = 0
-plt.figure()
-for i in range(len(S1)):
-    shap = S1[i][:,channel]
-    plt.plot(shap, label=f'shapelet{i+1}')
-plt.legend()
-plt.title('The extracted shapelets', fontweight="bold")
-plt.savefig(f'{data_name}_rls_shapelets1')
-
-
-# test correlation SUPERGOOOOOOOOOOOOOOD
-corr_matrix = np.zeros((K,K))
-for i in range(len(S1)):
-    for j in range(len(S1)):
-        corr_matrix[i,j] = max_corr(S1[i], S1[j])
-print(corr_matrix)
-
-print('Number candidates scored.', len(extractor.candidates_scored))
-print('Number candidates not scored.', len(extractor.candidates_notscored))
-sum = len(extractor.candidates_scored) + len(extractor.candidates_notscored)
-print('Their sum', sum)
-
-total=0
-for l in range(L_min, L_max+1, step):
-    total+=N*(Q-l+1)
-
-print('It should be', total)
-
-print('Positions of extracted shapelets', shapelets_rls.positions)
-print(f'Scores {shapelets_rls.scores}')
-
-
-X_train_transform, X_test_transform = extractor.transform()
-print('Type and shape of transformed train data', type(X_train_transform),  X_train_transform.shape)
-print('Type and shape of transformed test data', type(X_test_transform),  X_test_transform.shape)
-
-n_shap = K # n_shap must be <= K
-X_train_transform = X_train_transform[:,0:n_shap]
-X_test_transform = X_test_transform[:,0:n_shap]
-
-C = 1 / (N*alpha)
-
-svdd = SVDD(C=C, kernel='linear', zero_center=True, tol=1e-6, verbose=False)
-
-# fit the model
-svdd.fit(X_train_transform)
-
-# BALANCED ACCURACY
-y_test_predict = svdd.predict(X_test_transform)
-test_ba = balanced_accuracy_score(y_test_anomaly, y_test_predict)
-print("Test balanced accuracy:", test_ba)
-
-# AUC
-y_test_scores = svdd.decision_function(X_test_transform)
-auc_test = roc_auc_score(y_test_anomaly, y_test_scores)
-print("Test AUC:", auc_test)
-
-# F1 score
-f1_test = f1_score(y_test_anomaly, y_test_predict, pos_label=-1)
-print("Test F1 score:", f1_test)
-
+aucs = []
+scored = []
+f1s = []
+for seed in range(10):
+    print(f'Seed: {seed}')
+    np.random.seed(seed)
+    extractor = RLS_extractor(train_data=X_train_anomaly, test_data=X_test_anomaly)
+    print(f'Total candidates: {extractor.total_candidates}')
+    # range of lengths! 
+    shapelets_rls = extractor.extract(r, m, L_min, step, n_steps, pos_boundary, corr_boundary, epsilon, beta, reverse, K_star, maxiter, sample_size=r)
+    S1 = shapelets_rls.sequences
+    # shapelets_rls.scores
+    
+    print(f'Not scored: {len(extractor.candidates_notscored)}')
+    print(f'Scored: {len(extractor.candidates_scored)}')
+    print(f'Total: {len(extractor.total_candidates)}')
+    # okkkkkkkkkkkkk
+    scored.append(len(extractor.candidates_scored))
+    
+    channel = 0
+    plt.figure()
+    for i in range(len(S1)):
+     shap = S1[i][:,channel]
+     plt.plot(shap, label=f'shapelet{i+1}')
+    plt.legend()
+    plt.title('The extracted shapelets', fontweight="bold")
+    plt.savefig(f'{data_name}_rls_shapelets_{seed}')
+    
+    
+    # # test correlation SUPERGOOOOOOOOOOOOOOD
+    # corr_matrix = np.zeros((K,K))
+    # for i in range(len(S1)):
+    #     for j in range(len(S1)):
+    #         corr_matrix[i,j] = max_corr(S1[i], S1[j])
+    # print(corr_matrix)
+    
+    
+    X_train_transform, X_test_transform = extractor.transform()
+    print('Type and shape of transformed train data', type(X_train_transform),  X_train_transform.shape)
+    print('Type and shape of transformed test data', type(X_test_transform),  X_test_transform.shape)
+    
+    
+    C = 1 / (N*0.1)
+    
+    svdd = SVDD(C=C, kernel='linear', zero_center=True, tol=1e-6, verbose=False)
+    
+    # fit the model
+    svdd.fit(X_train_transform)
+    
+    # BALANCED ACCURACY
+    y_test_predict = svdd.predict(X_test_transform)
+    test_ba = balanced_accuracy_score(y_test_anomaly, y_test_predict)
+    print("Test balanced accuracy:", test_ba)
+    
+    # AUC
+    y_test_scores = svdd.decision_function(X_test_transform)
+    auc_test = roc_auc_score(y_test_anomaly, y_test_scores)
+    print("Test AUC:", auc_test)
+    
+    aucs.append(auc_test)
+    # F1 score
+    f1_test = f1_score(y_test_anomaly, y_test_predict, pos_label=-1)
+    print("Test F1 score:", f1_test)
+    f1s.append(f1_test)
+np.mean(scored)
+np.mean(aucs)
+np.std(scored)
+np.std(aucs)
+np.mean(f1s)
+np.std(f1s)
 
 ## check most contributing shapelets
 
@@ -201,7 +179,6 @@ X_anomaly = X_test_transform[y_test_anomaly==-1]
 X_normal = X_test_transform[y_test_anomaly==1]
 X_anomaly = np.mean(X_anomaly, axis=0)
 X_normal = np.mean(X_normal, axis=0)
-
 
 
 
@@ -265,8 +242,18 @@ shapelets_bf = extractor_bf.extract_shapelets(K_star, L_star, pos_boundary=pos_b
 
 S = shapelets_bf.sequences
 np.save(f'results/{data_name}/s_reverse={reverse}_pos={pos_boundary}_cor={corr_boundary}_KL0.2', S)
+S = np.load(f'results/{data_name}/s_reverse={reverse}_pos={pos_boundary}_cor={corr_boundary}_KL0.2.npy')
+extractor_bf.shapelets = Candidateset()
+extractor_bf.shapelets.sequences = S
 
-
+channel = 0
+plt.figure()
+for i in range(K):
+    shap = S[i,:,channel]
+    plt.plot(shap, label=f'shapelet{i+1}')
+plt.legend()
+plt.title('The extracted shapelets', fontweight="bold")
+plt.savefig('shapelets_coffee')
 
 # test correlation SUPERGOOOOOOOOOOOOOOD
 corr_matrix = np.zeros((K,K))
@@ -279,8 +266,15 @@ print(corr_matrix)
 
 print('Positions of extracted shapelets', shapelets_bf.positions)
 print(f'Scores {shapelets_bf.scores}')
+f1s = []
+aus = []
 
 
+extractor_bf = Bruteforce_extractor_mv(train_data=X_train_anomaly, test_data=X_test_anomaly)
+extractor_bf.extract_candidates(L_star)
+K = 15
+shapelets = extractor_bf.get_top_candidates(K, pos_boundary, corr_boundary, reverse, sample_size=3000)
+extractor_bf.shapelets = shapelets
 X_train_transform, X_test_transform = extractor_bf.transform()
 
 print('Type and shape of transformed train data', type(X_train_transform),  X_train_transform.shape)
@@ -290,9 +284,9 @@ n_shap = K # n_shap must be <= K
 X_train_transform = X_train_transform[:,0:n_shap]
 X_test_transform = X_test_transform[:,0:n_shap]
 
-C = 1 / (N*alpha)
+C = 1 / (N*0.1)
 
-svdd = SVDD(C=C, kernel='linear', zero_center=True, tol=1e-6, verbose=False)
+svdd = SVDD(C=C, kernel='linear', zero_center=True, tol=1e-6, verbose=True)
 
 # fit the model
 svdd.fit(X_train_transform)
@@ -310,14 +304,51 @@ print("Test AUC:", auc_test)
 # F1 score
 f1_test = f1_score(y_test_anomaly, y_test_predict, pos_label=-1)
 print("Test F1 score:", f1_test)
+aucs.append(auc_test)
+f1s.append(f1_test)
 
-
+aucs
 
 # check the most contributing shapelets
 
-X_test_transform[np.logical_and(y_test_predict==-1, y_test_anomaly==-1)]
+X_anomaly = X_test_transform[y_test_anomaly==-1]
+X_normal = X_test_transform[y_test_anomaly==1]
+X_anomaly = np.mean(X_anomaly, axis=0)
+X_normal = np.mean(X_normal, axis=0)
+diff = X_anomaly - X_normal
 
-X_test_transform[y_test_anomaly==-1]
+names=['s1', 's2', 's3','s4', 's5', 's6']
+plt.figure()
+plt.bar(names, diff, color='lightcoral')
+plt.xlabel('Shapelet')
+plt.ylabel('Difference in mean discrepancy')
+plt.savefig('difference_plot_coffee')
+
+f, ax = plt.subplots(2, 1, sharex=True)
+
+t = X_test_anomaly[y_test_anomaly==-1][10].flatten()
+
+s = S[5].flatten()
+distances = []
+for i in range(len(t) - len(s)):
+    distances.append(np.sqrt(length_normalized_distance(s,t[i:i+len(s)])))
+
+pos = np.argmin(distances)
+sequence = t[pos: pos + len(s)]
+
+s = s - np.mean(s) + np.mean(sequence)
+ax[0].plot(t)
+ax[0].plot(np.arange(pos, pos + len(s)), s, linewidth=2)
+ax[0].axvline(pos, color='k', linestyle='--', alpha=0.25)
+ax[0].set_title("The aligned extracted shapelet", fontweight="bold")
+
+ax[1].plot(distances)
+ax[1].axvline(pos, color='k', linestyle='--', alpha=0.25)
+ax[1].set_title('The discrepancies between the time series and the shapelet', fontweight="bold")
+
+plt.tight_layout()
+plt.savefig('align_coffee_anomaly')
+
 
 x_max = max(X_train_transform[:,0])+0.1
 y_max = max(X_train_transform[:,1])+0.1
@@ -377,5 +408,4 @@ plt.ylim((-0.01, y_max))
 plt.ylabel("shapelet 2")
 plt.xlabel("shapelet 1")
 plt.savefig('transformed_test')
-
 

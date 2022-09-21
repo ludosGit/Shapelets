@@ -70,19 +70,22 @@ print('number of anomalous train series:', len(y_train_anomaly[y_train_anomaly==
 print('number of normal test series:', len(y_test_anomaly[y_test_anomaly==1]))
 print('number of anomalous test series:', len(y_test_anomaly[y_test_anomaly==-1]))
 
-scaler = TimeSeriesScalerMeanVariance()
+scaler = TimeSeriesScalerMinMax()
 X_train_anomaly = scaler.fit_transform(X_train_anomaly)
 X_test_anomaly = scaler.transform(X_test_anomaly)
 
-# only first channel in case multivariate
+# # only first channel in case multivariate
+# plt.figure(figsize=(10, 5))
+# for i in range(len(X_train_anomaly[y_train_anomaly==1][:,:,0])):
+#     ts = X_train_anomaly[y_train_anomaly==1][i,:,0]
+#     plt.plot(range(len(ts)), ts, c='tab:blue', label='normal' if i==0 else None)
+# for i in range(len(X_train_anomaly[y_train_anomaly==-1][:,:,0])):
+#     ts = X_train_anomaly[y_train_anomaly==-1][i,:,0]
+#     plt.plot(range(len(ts)), ts, c='tab:orange', label='anomaly' if i==0 else None)
+# plt.legend()
+# plt.title('The time series in the train set', fontweight="bold")
+# plt.savefig('trace34_train')
 
-plt.figure(1, figsize=(10, 5))
-for ts in X_train_anomaly[y_train_anomaly==1][:,:,0]:
-    plt.plot(range(len(ts)), ts, c='tab:blue')
-for ts in X_train_anomaly[y_train_anomaly==-1][:,:,0]:
-    plt.plot(range(len(ts)), ts, c='tab:orange')
-plt.title('The time series in the train set', fontweight="bold")
-plt.savefig('trace34_train')
 
 
 extractor = Bruteforce_extractor_mv(train_data=X_train_anomaly, test_data=X_test_anomaly)
@@ -95,20 +98,26 @@ L = round(L_star * Q)
 reverse = True
 corr_threshold = None
 pos_boundary = 0
-
+shapelets_bf = extractor.extract_shapelets(K_star, L_star, pos_boundary=pos_boundary, corr_threshold=corr_threshold, reverse=reverse, sample_size=3000)
 
 S = np.load('results/Trace34/s_reverse=True_corr_threshold=0.8_L=55.npy')
 extractor.shapelets = Candidateset()
 extractor.shapelets.sequences = S
 
+S = shapelets_bf.sequences
+K = round(K_star*Q)
+pos_boundary = 0
+corr_threshold = None
+shapelets = extractor.get_top_candidates(K, pos_boundary, corr_threshold, reverse, sample_size=3000)
+S = shapelets.sequences
 channel = 0
 plt.figure()
 for i in range(len(S)):
     shap = S[i,:,channel]
     plt.plot(shap, label=f'shapelet{i+1}')
 plt.legend()
-plt.title('The extracted shapelets (correlation filter)', fontweight="bold")
-plt.savefig('trace34_shapelets_corrfilter')
+plt.title('The extracted shapelets (distance filter)', fontweight="bold")
+plt.savefig('trace34_shapelets_distancefilter')
 
 
 X_train_transform, X_test_transform = extractor.transform()
@@ -118,6 +127,26 @@ print('Type and shape of transformed test data', type(X_test_transform),  X_test
 n_shap = 1 # n_shap must be <= K
 X_train_transform = X_train_transform[:,0:n_shap]
 X_test_transform = X_test_transform[:,0:n_shap]
+
+ocsvm = OneClassSVM(nu=alpha, kernel='linear')
+
+# fit the model
+ocsvm.fit(X_train_transform)
+
+# BALANCED ACCURACY
+y_test_predict = ocsvm.predict(X_test_transform)
+test_ba = balanced_accuracy_score(y_test_anomaly, y_test_predict)
+print("Test balanced accuracy:", test_ba)
+
+# AUC
+y_test_scores = ocsvm.decision_function(X_test_transform)
+fpr, tpr, _ = roc_curve(y_test_anomaly, -y_test_scores, pos_label=-1)
+auc_test = auc(fpr, tpr)
+print("Test AUC:", auc_test)
+
+# F1 score
+f1_test = f1_score(y_test_anomaly, y_test_predict, pos_label=-1)
+print("Test F1 score:", f1_test)
 
 x_max = max(X_train_transform[:,0])+0.05
 y_max = max(X_train_transform[:,1])+0.05
@@ -156,7 +185,8 @@ for i in range(len(t) - len(s)):
     distances.append(np.sqrt(length_normalized_distance(s,t[i:i+len(s)])))
 
 pos = np.argmin(distances)
-
+seq = t[pos:pos+len(s)]
+s = s - np.mean(s) + np.mean(seq)
 ax[0].plot(t)
 ax[0].plot(np.arange(pos, pos + len(s)), s, linewidth=2)
 ax[0].axvline(pos, color='k', linestyle='--', alpha=0.25)
@@ -167,7 +197,7 @@ ax[1].axvline(pos, color='k', linestyle='--', alpha=0.25)
 ax[1].set_title('The discrepancies between the time series and the shapelet', fontweight="bold")
 
 plt.tight_layout()
-plt.savefig('correct_distance')
+plt.savefig('trace_align_anomaly')
 
 
 # do the same with a normal time series
